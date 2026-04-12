@@ -8,6 +8,7 @@
   "dialyxir": {:hex, :dialyxir, "1.4.7", "dda948fcee52962e4b6c5b4b16b2d8fa7d50d8645bbae8b8685c3f9ecb7f5f4d", [:mix], [{:erlex, ">= 0.2.8", [hex: :erlex, repo: "hexpm", optional: false]}], "hexpm", "b34527202e6eb8cee198efec110996c25c5898f43a4094df157f8d28f27d9efe"},
   "doctor": {:hex, :doctor, "0.22.0", "223e1cace1f16a38eda4113a5c435fa9b10d804aa72d3d9f9a71c471cc958fe7", [:mix], [{:decimal, "~> 2.0", [hex: :decimal, repo: "hexpm", optional: false]}], "hexpm", "96e22cf8c0df2e9777dc55ebaa5798329b9028889c4023fed3305688d902cd5b"},
   "earmark_parser": {:hex, :earmark_parser, "1.4.44", "f20830dd6b5c77afe2b063777ddbbff09f9759396500cdbe7523efd58d7a339c", [:mix], [], "hexpm", "4778ac752b4701a5599215f7030989c989ffdc4f6df457c5f36938cc2d2a2750"},
+  "elixir_make": {:hex, :elixir_make, "0.9.0", "6484b3cd8c0cee58f09f05ecaf1a140a8c97670671a6a0e7ab4dc326c3109726", [:mix], [], "hexpm", "db23d4fd8b757462ad02f8aa73431a426fe6671c80b200d9710caf3d1dd0ffdb"},
   "erlex": {:hex, :erlex, "0.2.8", "cd8116f20f3c0afe376d1e8d1f0ae2452337729f68be016ea544a72f767d9c12", [:mix], [], "hexpm", "9d66ff9fedf69e49dc3fd12831e12a8a37b76f8651dd21cd45fcf5561a8a7590"},
   "escape": {:hex, :escape, "0.4.1", "065164d0d18a70e75092fc71124978e7b50ac99de69748739e48609825ab1c9e", [:mix], [], "hexpm", "867d641d66ffb1afbb1cdf872eff3c21b1af90fec3d21916b1b5eda51e244158"},
   "ex_check": {:hex, :ex_check, "0.16.0", "07615bef493c5b8d12d5119de3914274277299c6483989e52b0f6b8358a26b5f", [:mix], [], "hexpm", "4d809b72a18d405514dda4809257d8e665ae7cf37a7aee3be6b74a34dec310f5"},
