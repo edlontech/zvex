@@ -17,19 +17,22 @@ CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release \
 
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-.PHONY: all clean
+.PHONY: all clean force
 
 all: $(PRIV_DIR)/lib/$(SHARED_LIB) $(PRIV_DIR)/include/zvec/c_api.h
 
 $(ZVEC_BUILD)/Makefile: $(ZVEC_SRC)/CMakeLists.txt
 	cmake -S $(ZVEC_SRC) -B $(ZVEC_BUILD) $(CMAKE_FLAGS)
 
-$(ZVEC_BUILD)/lib/$(SHARED_LIB): $(ZVEC_BUILD)/Makefile
+$(ZVEC_BUILD)/lib/$(SHARED_LIB): $(ZVEC_BUILD)/Makefile force
 	cmake --build $(ZVEC_BUILD) --config Release --target zvec_c_api -j $(NPROC)
 
 $(PRIV_DIR)/lib/$(SHARED_LIB): $(ZVEC_BUILD)/lib/$(SHARED_LIB)
 	@mkdir -p $(PRIV_DIR)/lib
 	cp $(ZVEC_BUILD)/lib/$(SHARED_LIB) $(PRIV_DIR)/lib/
+ifeq ($(UNAME_S),Darwin)
+	install_name_tool -id @rpath/$(SHARED_LIB) $(PRIV_DIR)/lib/$(SHARED_LIB)
+endif
 
 $(PRIV_DIR)/include/zvec/c_api.h: $(ZVEC_SRC)/src/include/zvec/c_api.h
 	@mkdir -p $(PRIV_DIR)/include/zvec
