@@ -169,7 +169,7 @@ defmodule Zvex.Native do
           const dir_cstr = get_binary_as_cstr(dir_term, &dir_buf) orelse return null;
           const base_cstr = get_binary_as_cstr(base_term, &base_buf) orelse return null;
 
-          const file_size: u32 = if (get_map_value(log_map, "file_size")) |fs| (get_int_from_term(u32, fs) orelse 10) else 10;
+          const file_size: u32 = if (get_map_value(log_map, "file_size")) |fs| (get_int_from_term(u32, fs) orelse 100) else 100;
           const overdue_days: u32 = if (get_map_value(log_map, "overdue_days")) |od| (get_int_from_term(u32, od) orelse 7) else 7;
 
           return zvec.zvec_config_log_create_file(level, dir_cstr, base_cstr, file_size, overdue_days);
@@ -237,12 +237,16 @@ defmodule Zvex.Native do
       }
 
       if (get_map_value(config_map, "log")) |log_map| {
-          if (create_log_config(log_map)) |log_config| {
-              const rc = zvec.zvec_config_data_set_log_config(config_data, log_config);
-              if (rc != zvec.ZVEC_OK) {
-                  zvec.zvec_config_data_destroy(config_data);
-                  return make_error_result(rc);
-              }
+          const log_config = create_log_config(log_map);
+          if (log_config == null) {
+              zvec.zvec_config_data_destroy(config_data);
+              return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "failed to create log configuration" } }, .{});
+          }
+          const rc = zvec.zvec_config_data_set_log_config(config_data, log_config);
+          if (rc != zvec.ZVEC_OK) {
+              zvec.zvec_config_log_destroy(log_config);
+              zvec.zvec_config_data_destroy(config_data);
+              return make_error_result(rc);
           }
       }
 
