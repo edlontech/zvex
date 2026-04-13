@@ -157,6 +157,143 @@ defmodule Zvex.VectorTest do
     end
   end
 
+  describe "sparse vectors" do
+    test "from_sparse/3 round-trip for sparse_fp32" do
+      indices = [0, 5, 10]
+      values = [1.0, 2.5, -3.0]
+      vector = Vector.from_sparse(indices, values, :sparse_fp32)
+
+      assert %Vector{type: :sparse_vector_fp32} = vector
+      assert {^indices, ^values} = Vector.to_sparse(vector)
+    end
+
+    test "from_sparse/3 round-trip for sparse_fp16" do
+      indices = [0, 5, 10]
+      values = [1.0, 2.5, -3.0]
+      vector = Vector.from_sparse(indices, values, :sparse_fp16)
+
+      assert %Vector{type: :sparse_vector_fp16} = vector
+      {result_indices, result_values} = Vector.to_sparse(vector)
+
+      assert result_indices == indices
+
+      Enum.zip(values, result_values)
+      |> Enum.each(fn {expected, actual} ->
+        assert_in_delta expected, actual, 0.01
+      end)
+    end
+
+    test "sparse?/1 returns true for sparse vectors" do
+      vector = Vector.from_sparse([0, 1], [1.0, 2.0], :sparse_fp32)
+      assert Vector.sparse?(vector)
+    end
+
+    test "sparse?/1 returns false for dense vectors" do
+      vector = Vector.from_list([1.0, 2.0], :fp32)
+      refute Vector.sparse?(vector)
+    end
+
+    test "nnz/1 returns correct count" do
+      vector = Vector.from_sparse([0, 5, 10], [1.0, 2.5, -3.0], :sparse_fp32)
+      assert Vector.nnz(vector) == 3
+    end
+
+    test "nnz/1 raises for dense vectors" do
+      vector = Vector.from_list([1.0, 2.0], :fp32)
+
+      assert_raise ArgumentError, ~r/sparse/, fn ->
+        Vector.nnz(vector)
+      end
+    end
+
+    test "dimension/1 returns nil for sparse vectors" do
+      vector = Vector.from_sparse([0, 1], [1.0, 2.0], :sparse_fp32)
+      assert Vector.dimension(vector) == nil
+    end
+
+    test "to_list/1 raises for sparse vectors" do
+      vector = Vector.from_sparse([0, 1], [1.0, 2.0], :sparse_fp32)
+
+      assert_raise ArgumentError, ~r/sparse/, fn ->
+        Vector.to_list(vector)
+      end
+    end
+
+    test "from_sparse/3 raises on unsorted indices" do
+      assert_raise ArgumentError, ~r/sorted/, fn ->
+        Vector.from_sparse([5, 0, 10], [1.0, 2.0, 3.0], :sparse_fp32)
+      end
+    end
+
+    test "from_sparse/3 raises on duplicate indices" do
+      assert_raise ArgumentError, ~r/duplicate/, fn ->
+        Vector.from_sparse([0, 5, 5], [1.0, 2.0, 3.0], :sparse_fp32)
+      end
+    end
+
+    test "from_sparse/3 raises on mismatched lengths" do
+      assert_raise ArgumentError, ~r/length/, fn ->
+        Vector.from_sparse([0, 5], [1.0, 2.0, 3.0], :sparse_fp32)
+      end
+    end
+
+    test "from_sparse/3 raises on non-sparse type" do
+      assert_raise ArgumentError, ~r/sparse/, fn ->
+        Vector.from_sparse([0, 1], [1.0, 2.0], :vector_fp32)
+      end
+    end
+
+    test "from_sparse/3 raises on negative index" do
+      assert_raise ArgumentError, ~r/non-negative/, fn ->
+        Vector.from_sparse([-1], [1.0], :sparse_fp32)
+      end
+    end
+
+    test "from_sparse/3 raises on float index" do
+      assert_raise ArgumentError, ~r/integers/, fn ->
+        Vector.from_sparse([0, 1.5], [1.0, 2.0], :sparse_fp32)
+      end
+    end
+
+    test "empty sparse vector round-trip" do
+      vector = Vector.from_sparse([], [], :sparse_fp32)
+
+      assert %Vector{type: :sparse_vector_fp32} = vector
+      assert {[], []} = Vector.to_sparse(vector)
+      assert Vector.nnz(vector) == 0
+    end
+
+    test "from_list/2 raises with sparse shorthand" do
+      assert_raise FunctionClauseError, fn ->
+        Vector.from_list([1.0, 2.0], :sparse_fp32)
+      end
+    end
+
+    test "from_binary/2 raises with sparse shorthand" do
+      assert_raise FunctionClauseError, fn ->
+        Vector.from_binary(<<1, 2, 3>>, :sparse_fp32)
+      end
+    end
+
+    test "binary layout verification" do
+      indices = [2, 7]
+      values = [1.5, -2.0]
+      vector = Vector.from_sparse(indices, values, :sparse_fp32)
+
+      <<nnz::unsigned-little-64, rest::binary>> = vector.data
+      assert nnz == 2
+
+      indices_size = 2 * 4
+      <<indices_bin::binary-size(indices_size), values_bin::binary>> = rest
+
+      parsed_indices = for <<i::unsigned-little-32 <- indices_bin>>, do: i
+      assert parsed_indices == [2, 7]
+
+      parsed_values = for <<v::little-float-32 <- values_bin>>, do: v
+      assert parsed_values == [1.5, -2.0]
+    end
+  end
+
   describe "edge cases" do
     test "empty list for fp32" do
       vector = Vector.from_list([], :fp32)
