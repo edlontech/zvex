@@ -1156,12 +1156,27 @@ defmodule Zvex.Native do
       }
 
       var bin: e.ErlNifBinary = undefined;
-      if (e.enif_inspect_binary(beam.context.env, value_term.v, &bin) == 1) {
-          _ = zvec.zvec_doc_add_field_by_value(doc, name_cstr, dt, @ptrCast(bin.data), bin.size);
+      if (e.enif_inspect_binary(beam.context.env, value_term.v, &bin) != 1) {
+          return false;
+      }
+
+      if (dt == zvec.ZVEC_DATA_TYPE_SPARSE_VECTOR_FP32 or
+          dt == zvec.ZVEC_DATA_TYPE_SPARSE_VECTOR_FP16)
+      {
+          if (bin.size < 8) return false;
+          const data: [*]const u8 = @ptrCast(bin.data);
+          if (data[4] != 0 or data[5] != 0 or data[6] != 0 or data[7] != 0) return false;
+          var c_buf: [65536]u8 = undefined;
+          const payload_size = bin.size - 4;
+          if (payload_size > c_buf.len) return false;
+          @memcpy(c_buf[0..4], data[0..4]);
+          @memcpy(c_buf[4..payload_size], data[8..bin.size]);
+          _ = zvec.zvec_doc_add_field_by_value(doc, name_cstr, dt, @ptrCast(&c_buf), payload_size);
           return true;
       }
 
-      return false;
+      _ = zvec.zvec_doc_add_field_by_value(doc, name_cstr, dt, @ptrCast(bin.data), bin.size);
+      return true;
   }
 
   fn build_doc_from_native_map(map_term: beam.term) ?*zvec.zvec_doc_t {
@@ -1319,8 +1334,6 @@ defmodule Zvex.Native do
       zvec.ZVEC_DATA_TYPE_VECTOR_INT16,
       zvec.ZVEC_DATA_TYPE_VECTOR_BINARY32,
       zvec.ZVEC_DATA_TYPE_VECTOR_BINARY64,
-      zvec.ZVEC_DATA_TYPE_SPARSE_VECTOR_FP16,
-      zvec.ZVEC_DATA_TYPE_SPARSE_VECTOR_FP32,
   };
 
   fn extract_field_value(doc: *const zvec.zvec_doc_t, name_ptr: [*:0]const u8) beam.term {
@@ -1339,6 +1352,23 @@ defmodule Zvex.Native do
               if (val_ptr) |vp| {
                   const type_atom = data_type_to_atom(dt);
                   const value = extract_typed_value(dt, vp, val_size);
+                  return beam.make(.{ name_term, type_atom, value }, .{});
+              }
+          }
+      }
+
+      inline for (.{
+          zvec.ZVEC_DATA_TYPE_SPARSE_VECTOR_FP32,
+          zvec.ZVEC_DATA_TYPE_SPARSE_VECTOR_FP16,
+      }) |dt| {
+          var val_ptr: ?*anyopaque = null;
+          var val_size: usize = 0;
+          const rc = zvec.zvec_doc_get_field_value_copy(doc, name_ptr, dt, &val_ptr, &val_size);
+          if (rc == zvec.ZVEC_OK) {
+              if (val_ptr) |vp| {
+                  const type_atom = data_type_to_atom(dt);
+                  const value = beam.make(@as([*]const u8, @ptrCast(vp))[0..val_size], .{});
+                  zvec.zvec_free(vp);
                   return beam.make(.{ name_term, type_atom, value }, .{});
               }
           }

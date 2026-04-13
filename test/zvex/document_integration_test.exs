@@ -227,4 +227,148 @@ defmodule Zvex.DocumentIntegrationTest do
       assert :ok = Document.delete_by_filter!(coll, "title = 'test'")
     end
   end
+
+  describe "sparse vector round-trip" do
+    defp sparse_schema do
+      Schema.new("sparse_collection")
+      |> Schema.add_field("id", :string, primary_key: true)
+      |> Schema.add_field("sparse_emb", :sparse_vector_fp32, dimension: 1000)
+    end
+
+    defp sparse_fp16_schema do
+      Schema.new("sparse_fp16_collection")
+      |> Schema.add_field("id", :string, primary_key: true)
+      |> Schema.add_field("sparse_emb", :sparse_vector_fp16, dimension: 1000)
+    end
+
+    defp mixed_schema do
+      Schema.new("mixed_collection")
+      |> Schema.add_field("id", :string, primary_key: true)
+      |> Schema.add_field("dense_emb", :vector_fp32, dimension: 4)
+      |> Schema.add_field("sparse_emb", :sparse_vector_fp32, dimension: 1000)
+    end
+
+    defp create_sparse_collection(%{test_dir: test_dir}) do
+      path = Path.join(test_dir, "sparse_coll")
+      {:ok, coll} = Collection.create(path, sparse_schema())
+      on_exit(fn -> Collection.close(coll) end)
+      %{collection: coll}
+    end
+
+    defp create_sparse_fp16_collection(%{test_dir: test_dir}) do
+      path = Path.join(test_dir, "sparse_fp16_coll")
+      {:ok, coll} = Collection.create(path, sparse_fp16_schema())
+      on_exit(fn -> Collection.close(coll) end)
+      %{collection: coll}
+    end
+
+    defp create_mixed_collection(%{test_dir: test_dir}) do
+      path = Path.join(test_dir, "mixed_coll")
+      {:ok, coll} = Collection.create(path, mixed_schema())
+      on_exit(fn -> Collection.close(coll) end)
+      %{collection: coll}
+    end
+
+    @tag :sparse
+    test "sparse_vector_fp32 insert and fetch round-trip", %{test_dir: test_dir} do
+      %{collection: coll} = create_sparse_collection(%{test_dir: test_dir})
+
+      indices = [0, 5, 10, 100]
+      values = [1.0, 2.5, -3.0, 0.5]
+      sparse_vec = Vector.from_sparse(indices, values, :sparse_fp32)
+
+      doc =
+        Document.new()
+        |> Document.put_pk("sparse-1")
+        |> Document.put("id", "sparse-1")
+        |> Document.put("sparse_emb", sparse_vec)
+
+      assert {:ok, %{success: 1, errors: 0}} = Document.insert(coll, doc)
+
+      assert {:ok, [fetched]} = Document.fetch(coll, ["sparse-1"])
+      assert %Document{pk: "sparse-1"} = fetched
+
+      assert {"sparse_emb", {:sparse_vector_fp32, fetched_data}} =
+               Enum.find(fetched.fields, fn {name, _} -> name == "sparse_emb" end)
+
+      fetched_vec = %Vector{type: :sparse_vector_fp32, data: fetched_data}
+      {fetched_indices, fetched_values} = Vector.to_sparse(fetched_vec)
+
+      assert fetched_indices == indices
+
+      Enum.zip(values, fetched_values)
+      |> Enum.each(fn {expected, actual} ->
+        assert_in_delta expected, actual, 1.0e-6
+      end)
+    end
+
+    @tag :sparse
+    test "sparse_vector_fp16 insert and fetch round-trip", %{test_dir: test_dir} do
+      %{collection: coll} = create_sparse_fp16_collection(%{test_dir: test_dir})
+
+      indices = [1, 7, 42]
+      values = [1.0, -0.5, 3.0]
+      sparse_vec = Vector.from_sparse(indices, values, :sparse_fp16)
+
+      doc =
+        Document.new()
+        |> Document.put_pk("sparse16-1")
+        |> Document.put("id", "sparse16-1")
+        |> Document.put("sparse_emb", sparse_vec)
+
+      assert {:ok, %{success: 1, errors: 0}} = Document.insert(coll, doc)
+
+      assert {:ok, [fetched]} = Document.fetch(coll, ["sparse16-1"])
+      assert %Document{pk: "sparse16-1"} = fetched
+
+      assert {"sparse_emb", {:sparse_vector_fp16, fetched_data}} =
+               Enum.find(fetched.fields, fn {name, _} -> name == "sparse_emb" end)
+
+      fetched_vec = %Vector{type: :sparse_vector_fp16, data: fetched_data}
+      {fetched_indices, fetched_values} = Vector.to_sparse(fetched_vec)
+
+      assert fetched_indices == indices
+
+      Enum.zip(values, fetched_values)
+      |> Enum.each(fn {expected, actual} ->
+        assert_in_delta expected, actual, 0.01
+      end)
+    end
+
+    @tag :sparse
+    test "doc with both dense and sparse vector fields", %{test_dir: test_dir} do
+      %{collection: coll} = create_mixed_collection(%{test_dir: test_dir})
+
+      dense_vec = Vector.from_list([1.0, 2.0, 3.0, 4.0], :fp32)
+      sparse_vec = Vector.from_sparse([0, 3, 99], [0.1, 0.2, 0.3], :sparse_fp32)
+
+      doc =
+        Document.new()
+        |> Document.put_pk("mixed-1")
+        |> Document.put("id", "mixed-1")
+        |> Document.put("dense_emb", dense_vec)
+        |> Document.put("sparse_emb", sparse_vec)
+
+      assert {:ok, %{success: 1, errors: 0}} = Document.insert(coll, doc)
+
+      assert {:ok, [fetched]} = Document.fetch(coll, ["mixed-1"])
+      assert %Document{pk: "mixed-1"} = fetched
+
+      assert {"dense_emb", {:vector_fp32, _dense_data}} =
+               Enum.find(fetched.fields, fn {name, _} -> name == "dense_emb" end)
+
+      assert {"sparse_emb", {:sparse_vector_fp32, sparse_data}} =
+               Enum.find(fetched.fields, fn {name, _} -> name == "sparse_emb" end)
+
+      fetched_vec = %Vector{type: :sparse_vector_fp32, data: sparse_data}
+      {fetched_indices, fetched_values} = Vector.to_sparse(fetched_vec)
+
+      assert fetched_indices == [0, 3, 99]
+
+      Enum.zip([0.1, 0.2, 0.3], fetched_values)
+      |> Enum.each(fn {expected, actual} ->
+        assert_in_delta expected, actual, 1.0e-6
+      end)
+    end
+  end
 end
