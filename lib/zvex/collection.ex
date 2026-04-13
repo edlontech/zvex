@@ -166,6 +166,178 @@ defmodule Zvex.Collection do
     |> Zvex.Error.unwrap!()
   end
 
+  # -- CRUD operations --------------------------------------------------------
+
+  @spec insert(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
+          | {:error, Zvex.Error.t()}
+  def insert(%__MODULE__{} = collection, doc_or_docs) do
+    with :ok <- check_open(collection) do
+      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+
+      case Zvex.Native.collection_insert(collection.ref, native_maps) do
+        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec insert!(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          %{success: non_neg_integer(), errors: non_neg_integer()}
+  def insert!(collection, doc_or_docs) do
+    insert(collection, doc_or_docs) |> Zvex.Error.unwrap!()
+  end
+
+  @spec insert_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          {:ok, [map()]} | {:error, Zvex.Error.t()}
+  def insert_with_results(%__MODULE__{} = collection, doc_or_docs) do
+    with :ok <- check_open(collection) do
+      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+
+      Zvex.Native.collection_insert_with_results(collection.ref, native_maps)
+      |> Zvex.Error.from_native()
+    end
+  end
+
+  @spec insert_with_results!(t(), Zvex.Document.t() | [Zvex.Document.t()]) :: [map()]
+  def insert_with_results!(collection, doc_or_docs) do
+    insert_with_results(collection, doc_or_docs) |> Zvex.Error.unwrap!()
+  end
+
+  @spec update(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
+          | {:error, Zvex.Error.t()}
+  def update(%__MODULE__{} = collection, doc_or_docs) do
+    with :ok <- check_open(collection) do
+      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+
+      case Zvex.Native.collection_update(collection.ref, native_maps) do
+        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec update!(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          %{success: non_neg_integer(), errors: non_neg_integer()}
+  def update!(collection, doc_or_docs) do
+    update(collection, doc_or_docs) |> Zvex.Error.unwrap!()
+  end
+
+  @spec update_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          {:ok, [map()]} | {:error, Zvex.Error.t()}
+  def update_with_results(%__MODULE__{} = collection, doc_or_docs) do
+    with :ok <- check_open(collection) do
+      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+
+      Zvex.Native.collection_update_with_results(collection.ref, native_maps)
+      |> Zvex.Error.from_native()
+    end
+  end
+
+  @spec update_with_results!(t(), Zvex.Document.t() | [Zvex.Document.t()]) :: [map()]
+  def update_with_results!(collection, doc_or_docs) do
+    update_with_results(collection, doc_or_docs) |> Zvex.Error.unwrap!()
+  end
+
+  @spec upsert(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
+          | {:error, Zvex.Error.t()}
+  def upsert(%__MODULE__{} = collection, doc_or_docs) do
+    with :ok <- check_open(collection) do
+      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+
+      case Zvex.Native.collection_upsert(collection.ref, native_maps) do
+        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec upsert!(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          %{success: non_neg_integer(), errors: non_neg_integer()}
+  def upsert!(collection, doc_or_docs) do
+    upsert(collection, doc_or_docs) |> Zvex.Error.unwrap!()
+  end
+
+  @spec upsert_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
+          {:ok, [map()]} | {:error, Zvex.Error.t()}
+  def upsert_with_results(%__MODULE__{} = collection, doc_or_docs) do
+    with :ok <- check_open(collection) do
+      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+
+      Zvex.Native.collection_upsert_with_results(collection.ref, native_maps)
+      |> Zvex.Error.from_native()
+    end
+  end
+
+  @spec upsert_with_results!(t(), Zvex.Document.t() | [Zvex.Document.t()]) :: [map()]
+  def upsert_with_results!(collection, doc_or_docs) do
+    upsert_with_results(collection, doc_or_docs) |> Zvex.Error.unwrap!()
+  end
+
+  @spec delete(t(), [String.t()]) ::
+          {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
+          | {:error, Zvex.Error.t()}
+  def delete(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
+    with :ok <- check_open(collection) do
+      case Zvex.Native.collection_delete(collection.ref, primary_keys) do
+        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec delete!(t(), [String.t()]) ::
+          %{success: non_neg_integer(), errors: non_neg_integer()}
+  def delete!(collection, primary_keys) do
+    delete(collection, primary_keys) |> Zvex.Error.unwrap!()
+  end
+
+  @spec delete_with_results(t(), [String.t()]) ::
+          {:ok, [map()]} | {:error, Zvex.Error.t()}
+  def delete_with_results(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
+    with :ok <- check_open(collection) do
+      Zvex.Native.collection_delete_with_results(collection.ref, primary_keys)
+      |> Zvex.Error.from_native()
+    end
+  end
+
+  @spec delete_with_results!(t(), [String.t()]) :: [map()]
+  def delete_with_results!(collection, primary_keys) do
+    delete_with_results(collection, primary_keys) |> Zvex.Error.unwrap!()
+  end
+
+  @spec delete_by_filter(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
+  def delete_by_filter(%__MODULE__{} = collection, filter) when is_binary(filter) do
+    with :ok <- check_open(collection) do
+      case Zvex.Native.collection_delete_by_filter(collection.ref, filter) do
+        :ok -> :ok
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec delete_by_filter!(t(), String.t()) :: :ok
+  def delete_by_filter!(collection, filter) do
+    delete_by_filter(collection, filter) |> Zvex.Error.unwrap!()
+  end
+
+  @spec fetch(t(), [String.t()]) :: {:ok, [Zvex.Document.t()]} | {:error, Zvex.Error.t()}
+  def fetch(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
+    with :ok <- check_open(collection) do
+      case Zvex.Native.collection_fetch(collection.ref, primary_keys) do
+        {:ok, native_docs} -> {:ok, Enum.map(native_docs, &Zvex.Document.from_native_map/1)}
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec fetch!(t(), [String.t()]) :: [Zvex.Document.t()]
+  def fetch!(collection, primary_keys) do
+    fetch(collection, primary_keys) |> Zvex.Error.unwrap!()
+  end
+
   defp check_open(%__MODULE__{closed: true}),
     do: {:error, Zvex.Error.Invalid.Argument.exception(message: "collection is closed")}
 
