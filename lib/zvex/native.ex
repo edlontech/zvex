@@ -274,15 +274,14 @@ defmodule Zvex.Native do
 
   const CollectionData = struct {
       ptr: *zvec.zvec_collection_t,
-      closed: std.atomic.Value(bool),
+      closed: bool,
   };
 
   const CollectionCallbacks = struct {
       pub fn dtor(data: *CollectionData) void {
-          if (!data.closed.load(.acquire)) {
+          if (!data.closed) {
               _ = zvec.zvec_collection_close(data.ptr);
           }
-          _ = zvec.zvec_collection_destroy(data.ptr);
       }
   };
 
@@ -634,7 +633,7 @@ defmodule Zvex.Native do
 
       const resource = CollectionResource.create(.{
           .ptr = collection.?,
-          .closed = std.atomic.Value(bool).init(false),
+          .closed = false,
       }, .{}) catch
           return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate collection resource" } }, .{});
 
@@ -668,7 +667,7 @@ defmodule Zvex.Native do
 
       const resource = CollectionResource.create(.{
           .ptr = collection.?,
-          .closed = std.atomic.Value(bool).init(false),
+          .closed = false,
       }, .{}) catch
           return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate collection resource" } }, .{});
 
@@ -688,7 +687,7 @@ defmodule Zvex.Native do
       var data = resource.unpack();
       _ = &data;
 
-      if (data.closed.load(.acquire)) {
+      if (data.closed) {
           return beam.make(.ok, .{});
       }
 
@@ -699,7 +698,7 @@ defmodule Zvex.Native do
           return make_error_result(rc);
       }
 
-      resource.__payload.*.closed.store(true, .release);
+      resource.__payload.*.closed = true;
       return beam.make(.ok, .{});
   }
 
@@ -714,7 +713,7 @@ defmodule Zvex.Native do
 
       const data = resource.unpack();
 
-      if (data.closed.load(.acquire)) {
+      if (data.closed) {
           return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
       }
 
@@ -739,7 +738,7 @@ defmodule Zvex.Native do
 
       const data = resource.unpack();
 
-      if (data.closed.load(.acquire)) {
+      if (data.closed) {
           return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
       }
 
@@ -764,7 +763,7 @@ defmodule Zvex.Native do
 
       const data = resource.unpack();
 
-      if (data.closed.load(.acquire)) {
+      if (data.closed) {
           return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
       }
 
@@ -780,7 +779,7 @@ defmodule Zvex.Native do
       const doc_count = zvec.zvec_collection_stats_get_doc_count(stats_ptr);
       const index_count = zvec.zvec_collection_stats_get_index_count(stats_ptr);
 
-      var indexes_list = beam.make(.{}, .{});
+      var indexes_list = beam.make_empty_list(.{});
 
       var idx: usize = index_count;
       while (idx > 0) {
@@ -802,7 +801,7 @@ defmodule Zvex.Native do
               .completeness = comp_f64,
           }, .{});
 
-          indexes_list = beam.make(.{ index_entry, indexes_list }, .{});
+          indexes_list = beam.make_list_cell(index_entry, indexes_list, .{});
       }
 
       zvec.zvec_collection_stats_destroy(stats_ptr);
@@ -826,7 +825,7 @@ defmodule Zvex.Native do
 
       const data = resource.unpack();
 
-      if (data.closed.load(.acquire)) {
+      if (data.closed) {
           return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
       }
 
@@ -860,7 +859,7 @@ defmodule Zvex.Native do
           return make_error_result(names_rc);
       }
 
-      var fields_list = beam.make(.{}, .{});
+      var fields_list = beam.make_empty_list(.{});
 
       var fi: usize = field_count;
       while (fi > 0) {
@@ -991,7 +990,7 @@ defmodule Zvex.Native do
               }, .{});
           }
 
-          fields_list = beam.make(.{ field_entry, fields_list }, .{});
+          fields_list = beam.make_list_cell(field_entry, fields_list, .{});
       }
 
       zvec.zvec_free(@ptrCast(names));
