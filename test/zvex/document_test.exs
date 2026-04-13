@@ -275,6 +275,179 @@ defmodule Zvex.DocumentTest do
     end
   end
 
+  describe "introspection" do
+    test "fields/1 returns field names" do
+      doc =
+        Document.new()
+        |> Document.put("name", "Alice")
+        |> Document.put("age", 30)
+
+      assert Enum.sort(Document.fields(doc)) == ["age", "name"]
+    end
+
+    test "fields/1 returns empty list for empty doc" do
+      assert Document.fields(Document.new()) == []
+    end
+
+    test "has_field?/2 returns true for existing field" do
+      doc = Document.new() |> Document.put("name", "Alice")
+      assert Document.has_field?(doc, "name")
+    end
+
+    test "has_field?/2 returns false for missing field" do
+      doc = Document.new() |> Document.put("name", "Alice")
+      refute Document.has_field?(doc, "missing")
+    end
+
+    test "field_null?/2 returns true for null field" do
+      doc = Document.new() |> Document.put_null("empty")
+      assert Document.field_null?(doc, "empty")
+    end
+
+    test "field_null?/2 returns false for non-null field" do
+      doc = Document.new() |> Document.put("name", "Alice")
+      refute Document.field_null?(doc, "name")
+    end
+
+    test "field_null?/2 returns false for missing field" do
+      doc = Document.new()
+      refute Document.field_null?(doc, "missing")
+    end
+
+    test "empty?/1 returns true for new doc" do
+      assert Document.empty?(Document.new())
+    end
+
+    test "empty?/1 returns false with fields" do
+      doc = Document.new() |> Document.put("name", "Alice")
+      refute Document.empty?(doc)
+    end
+
+    test "empty?/1 returns false with pk" do
+      doc = Document.new() |> Document.put_pk("doc-1")
+      refute Document.empty?(doc)
+    end
+  end
+
+  describe "mutation" do
+    test "remove_field/2 removes existing field" do
+      doc =
+        Document.new()
+        |> Document.put("name", "Alice")
+        |> Document.put("age", 30)
+
+      result = Document.remove_field(doc, "name")
+      refute Document.has_field?(result, "name")
+      assert Document.has_field?(result, "age")
+    end
+
+    test "remove_field/2 is a no-op for missing field" do
+      doc = Document.new() |> Document.put("name", "Alice")
+      result = Document.remove_field(doc, "missing")
+      assert result.fields == doc.fields
+    end
+
+    test "merge/2 combines fields from both documents" do
+      doc1 = Document.new() |> Document.put("name", "Alice")
+      doc2 = Document.new() |> Document.put("age", 30)
+
+      result = Document.merge(doc1, doc2)
+      assert Document.has_field?(result, "name")
+      assert Document.has_field?(result, "age")
+    end
+
+    test "merge/2 second document overrides first" do
+      doc1 = Document.new() |> Document.put("name", "Alice")
+      doc2 = Document.new() |> Document.put("name", "Bob")
+
+      result = Document.merge(doc1, doc2)
+      assert result.fields["name"] == {:string, "Bob"}
+    end
+
+    test "merge/2 uses second pk when present" do
+      doc1 = Document.new() |> Document.put_pk("pk-1")
+      doc2 = Document.new() |> Document.put_pk("pk-2")
+
+      result = Document.merge(doc1, doc2)
+      assert result.pk == "pk-2"
+    end
+
+    test "merge/2 keeps first pk when second is nil" do
+      doc1 = Document.new() |> Document.put_pk("pk-1")
+      doc2 = Document.new()
+
+      result = Document.merge(doc1, doc2)
+      assert result.pk == "pk-1"
+    end
+
+    test "merge/2 type conflict uses last-writer-wins" do
+      doc1 = Document.new() |> Document.put("value", "text")
+      doc2 = Document.new() |> Document.put("value", 42)
+
+      result = Document.merge(doc1, doc2)
+      assert result.fields["value"] == {:int64, 42}
+    end
+
+    test "clear/1 returns empty doc" do
+      doc =
+        Document.new()
+        |> Document.put_pk("doc-1")
+        |> Document.put("name", "Alice")
+
+      result = Document.clear(doc)
+      assert Document.empty?(result)
+    end
+  end
+
+  describe "Inspect protocol" do
+    test "shows pk and field types" do
+      doc =
+        Document.new()
+        |> Document.put_pk("doc-1")
+        |> Document.put("name", "Alice")
+        |> Document.put("age", 30)
+
+      output = inspect(doc)
+      assert output =~ "Zvex.Document"
+      assert output =~ "doc-1"
+      assert output =~ "name"
+      assert output =~ "string"
+      assert output =~ "age"
+      assert output =~ "int64"
+    end
+
+    test "shows vector dimensions" do
+      vec = Vector.from_list([1.0, 2.0, 3.0], :fp32)
+
+      doc =
+        Document.new()
+        |> Document.put("embedding", vec)
+
+      output = inspect(doc)
+      assert output =~ "dim=3"
+      assert output =~ "vector_fp32"
+    end
+
+    test "shows sparse vector nnz" do
+      sparse = Vector.from_sparse([0, 5, 10], [1.0, 2.5, -3.0], :sparse_fp32)
+
+      doc =
+        Document.new()
+        |> Document.put("sparse_emb", sparse)
+
+      output = inspect(doc)
+      assert output =~ "nnz=3"
+      assert output =~ "sparse_vector_fp32"
+    end
+
+    test "shows empty document" do
+      doc = Document.new()
+      output = inspect(doc)
+      assert output =~ "Zvex.Document"
+      assert output =~ "pk: nil"
+    end
+  end
+
   describe "to_native_maps/1" do
     test "normalizes single doc to list" do
       doc = Document.new() |> Document.put_pk("doc-1")

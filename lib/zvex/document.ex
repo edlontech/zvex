@@ -34,6 +34,39 @@ defmodule Zvex.Document do
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
+  @spec fields(t()) :: [String.t()]
+  def fields(%__MODULE__{fields: fields}), do: Map.keys(fields)
+
+  @spec has_field?(t(), String.t()) :: boolean()
+  def has_field?(%__MODULE__{fields: fields}, field), do: Map.has_key?(fields, field)
+
+  @spec field_null?(t(), String.t()) :: boolean()
+  def field_null?(%__MODULE__{fields: fields}, field) do
+    case Map.get(fields, field) do
+      {_, nil} -> true
+      _ -> false
+    end
+  end
+
+  @spec empty?(t()) :: boolean()
+  def empty?(%__MODULE__{fields: fields, pk: pk}) do
+    map_size(fields) == 0 and is_nil(pk)
+  end
+
+  @spec remove_field(t(), String.t()) :: t()
+  def remove_field(%__MODULE__{} = doc, field) do
+    %{doc | fields: Map.delete(doc.fields, field)}
+  end
+
+  @spec merge(t(), t()) :: t()
+  def merge(%__MODULE__{} = doc1, %__MODULE__{} = doc2) do
+    pk = if doc2.pk, do: doc2.pk, else: doc1.pk
+    %__MODULE__{pk: pk, fields: Map.merge(doc1.fields, doc2.fields)}
+  end
+
+  @spec clear(t()) :: t()
+  def clear(%__MODULE__{}), do: %__MODULE__{}
+
   @spec put(t(), String.t(), term()) :: t()
   def put(%__MODULE__{} = doc, field, %Vector{type: type, data: data}) do
     %{doc | fields: Map.put(doc.fields, field, {type, data})}
@@ -423,4 +456,71 @@ defmodule Zvex.Document do
 
   defp validation_error(message),
     do: {:error, Zvex.Error.Invalid.Argument.exception(message: message)}
+end
+
+defimpl Inspect, for: Zvex.Document do
+  import Inspect.Algebra
+
+  @sparse_types [:sparse_vector_fp16, :sparse_vector_fp32]
+  @dense_vector_types [
+    :vector_fp32,
+    :vector_fp16,
+    :vector_fp64,
+    :vector_int4,
+    :vector_int8,
+    :vector_int16,
+    :vector_binary32,
+    :vector_binary64
+  ]
+
+  def inspect(%Zvex.Document{pk: pk, fields: fields}, opts) do
+    field_docs =
+      fields
+      |> Enum.sort_by(fn {name, _} -> name end)
+      |> Enum.map(fn {name, {type, value}} ->
+        annotation = type_annotation(type, value)
+
+        concat([
+          color("\"", :string, opts),
+          color(name, :string, opts),
+          color("\"", :string, opts),
+          " (",
+          annotation,
+          ")"
+        ])
+      end)
+
+    pk_doc =
+      if pk,
+        do:
+          concat([
+            "pk: ",
+            color("\"", :string, opts),
+            color(pk, :string, opts),
+            color("\"", :string, opts)
+          ]),
+        else: "pk: nil"
+
+    fields_doc = container_doc("[", field_docs, "]", opts, fn doc, _opts -> doc end)
+    concat(["#Zvex.Document<", pk_doc, ", fields: ", fields_doc, ">"])
+  end
+
+  defp type_annotation(type, value) when type in @sparse_types do
+    nnz = sparse_nnz(value)
+    "#{type}, nnz=#{nnz}"
+  end
+
+  defp type_annotation(type, value) when type in @dense_vector_types do
+    dim = Zvex.Vector.dimension(%Zvex.Vector{type: type, data: value})
+    "#{type}, dim=#{dim}"
+  end
+
+  defp type_annotation(type, _value), do: to_string(type)
+
+  defp sparse_nnz(data) when is_binary(data) and byte_size(data) >= 8 do
+    <<n::unsigned-little-64, _rest::binary>> = data
+    n
+  end
+
+  defp sparse_nnz(_), do: 0
 end
