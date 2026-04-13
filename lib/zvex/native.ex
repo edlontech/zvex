@@ -25,7 +25,9 @@ defmodule Zvex.Native do
       collection_delete: [:dirty_cpu],
       collection_delete_with_results: [:dirty_cpu],
       collection_delete_by_filter: [:dirty_cpu],
-      collection_fetch: [:dirty_cpu]
+      collection_fetch: [:dirty_cpu],
+      doc_serialize: [:dirty_cpu],
+      doc_deserialize: [:dirty_cpu]
     ],
     c: [
       include_dirs: [{:priv, "include"}],
@@ -1781,6 +1783,126 @@ defmodule Zvex.Native do
       zvec.zvec_docs_free(@ptrCast(result_docs), found_count);
 
       return beam.make(.{ .ok, docs_result_list }, .{});
+  }
+
+  // =========================================================================
+  // doc_serialize/1
+  // =========================================================================
+
+  pub fn doc_serialize(native_map: beam.term) beam.term {
+      const doc = build_doc_from_native_map(native_map) orelse
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build document" } }, .{});
+      defer zvec.zvec_doc_destroy(doc);
+
+      zvec.zvec_clear_error();
+      var data: [*c]u8 = null;
+      var size: usize = 0;
+      const rc = zvec.zvec_doc_serialize(doc, @ptrCast(&data), &size);
+
+      if (rc != zvec.ZVEC_OK) {
+          return make_error_result(rc);
+      }
+
+      if (data == null or size == 0) {
+          return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "serialize returned empty data" } }, .{});
+      }
+
+      const result = beam.make(@as([*]const u8, @ptrCast(data))[0..size], .{});
+      zvec.zvec_free_uint8_array(data);
+
+      return beam.make(.{ .ok, result }, .{});
+  }
+
+  // =========================================================================
+  // doc_deserialize/1
+  // =========================================================================
+
+  pub fn doc_deserialize(binary: beam.term) beam.term {
+      var bin: e.ErlNifBinary = undefined;
+      if (e.enif_inspect_binary(beam.context.env, binary.v, &bin) == 0) {
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "expected binary" } }, .{});
+      }
+
+      // The C library's Doc::deserialize ignores the `size` parameter and reads
+      // unchecked past the buffer boundary. We validate the binary structure here
+      // before calling into C to prevent a SIGBUS crash.
+      //
+      // Serialization layout (little-endian):
+      //   pk_len:      u32  (4 bytes)
+      //   pk:          u8[] (pk_len bytes)
+      //   score:       f32  (4 bytes)
+      //   doc_id:      u64  (8 bytes)
+      //   op:          u32  (4 bytes)  -- enum class : uint32_t
+      //   field_count: u32  (4 bytes)
+      //
+      // Minimum valid binary = 24 bytes (empty pk, zero fields).
+      const min_doc_size: usize = 24;
+      if (bin.size < min_doc_size) {
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "binary too small to be a valid document" } }, .{});
+      }
+
+      const pk_len = std.mem.readInt(u32, bin.data[0..4], .little);
+      if (pk_len > bin.size - min_doc_size) {
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid document binary" } }, .{});
+      }
+
+      zvec.zvec_clear_error();
+      var doc: ?*zvec.zvec_doc_t = null;
+      const rc = zvec.zvec_doc_deserialize(@ptrCast(bin.data), bin.size, @ptrCast(&doc));
+
+      if (rc != zvec.ZVEC_OK) {
+          return make_error_result(rc);
+      }
+
+      if (doc == null) {
+          return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "deserialize returned null doc" } }, .{});
+      }
+
+      defer zvec.zvec_doc_destroy(doc.?);
+      const result = extract_doc_to_term(doc.?);
+
+      return beam.make(.{ .ok, result }, .{});
+  }
+
+  // =========================================================================
+  // doc_memory_usage/1
+  // =========================================================================
+
+  pub fn doc_memory_usage(native_map: beam.term) beam.term {
+      const doc = build_doc_from_native_map(native_map) orelse
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build document" } }, .{});
+      defer zvec.zvec_doc_destroy(doc);
+
+      const usage = zvec.zvec_doc_memory_usage(doc);
+      return beam.make(.{ .ok, usage }, .{});
+  }
+
+  // =========================================================================
+  // doc_detail_string/1
+  // =========================================================================
+
+  pub fn doc_detail_string(native_map: beam.term) beam.term {
+      const doc = build_doc_from_native_map(native_map) orelse
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build document" } }, .{});
+      defer zvec.zvec_doc_destroy(doc);
+
+      zvec.zvec_clear_error();
+      var str_ptr: [*c]u8 = null;
+      const rc = zvec.zvec_doc_to_detail_string(doc, @ptrCast(&str_ptr));
+
+      if (rc != zvec.ZVEC_OK) {
+          return make_error_result(rc);
+      }
+
+      if (str_ptr == null) {
+          return beam.make(.{ .ok, "" }, .{});
+      }
+
+      const len = std.mem.len(@as([*:0]const u8, @ptrCast(str_ptr)));
+      const result = beam.make(@as([*]const u8, @ptrCast(str_ptr))[0..len], .{});
+      zvec.zvec_free(@constCast(@ptrCast(str_ptr)));
+
+      return beam.make(.{ .ok, result }, .{});
   }
   """
 end

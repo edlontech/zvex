@@ -163,6 +163,43 @@ defmodule Zvex.Document do
   def to_native_maps(%__MODULE__{} = doc), do: [to_native_map(doc)]
   def to_native_maps(docs) when is_list(docs), do: Enum.map(docs, &to_native_map/1)
 
+  # -- Serialization ----------------------------------------------------------
+
+  @spec serialize(t()) :: {:ok, binary()} | {:error, Zvex.Error.t()}
+  def serialize(%__MODULE__{} = doc) do
+    doc |> to_native_map() |> Zvex.Native.doc_serialize() |> Zvex.Error.from_native()
+  end
+
+  @spec serialize!(t()) :: binary()
+  def serialize!(doc), do: serialize(doc) |> Zvex.Error.unwrap!()
+
+  @spec deserialize(binary()) :: {:ok, t()} | {:error, Zvex.Error.t()}
+  def deserialize(binary) when is_binary(binary) do
+    case Zvex.Native.doc_deserialize(binary) |> Zvex.Error.from_native() do
+      {:ok, native_map} -> {:ok, from_native_map(native_map)}
+      error -> error
+    end
+  end
+
+  @spec deserialize!(binary()) :: t()
+  def deserialize!(binary), do: deserialize(binary) |> Zvex.Error.unwrap!()
+
+  @spec memory_usage(t()) :: {:ok, non_neg_integer()} | {:error, Zvex.Error.t()}
+  def memory_usage(%__MODULE__{} = doc) do
+    doc |> to_native_map() |> Zvex.Native.doc_memory_usage() |> Zvex.Error.from_native()
+  end
+
+  @spec memory_usage!(t()) :: non_neg_integer()
+  def memory_usage!(doc), do: memory_usage(doc) |> Zvex.Error.unwrap!()
+
+  @spec detail_string(t()) :: {:ok, String.t()} | {:error, Zvex.Error.t()}
+  def detail_string(%__MODULE__{} = doc) do
+    doc |> to_native_map() |> Zvex.Native.doc_detail_string() |> Zvex.Error.from_native()
+  end
+
+  @spec detail_string!(t()) :: String.t()
+  def detail_string!(doc), do: detail_string(doc) |> Zvex.Error.unwrap!()
+
   # -- CRUD operations --------------------------------------------------------
 
   @spec insert(Collection.t(), t() | [t()]) ::
