@@ -13,9 +13,6 @@ pub fn collection_query(resource_term: beam.term, query_map: beam.term) beam.ter
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     const query = zvec.zvec_vector_query_create() orelse
         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate query" } }, .{});

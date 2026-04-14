@@ -5,14 +5,11 @@ const zvec = common.zvec;
 
 pub const CollectionData = struct {
     ptr: *zvec.zvec_collection_t,
-    closed: bool,
 };
 
 pub const CollectionCallbacks = struct {
     pub fn dtor(data: *CollectionData) void {
-        if (!data.closed) {
-            _ = zvec.zvec_collection_close(data.ptr);
-        }
+        _ = zvec.zvec_collection_close(data.ptr);
     }
 };
 

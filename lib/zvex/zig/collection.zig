@@ -6,27 +6,6 @@ const document = @import("document.zig");
 const resource = @import("resource.zig");
 const schema = @import("schema.zig");
 
-pub fn collection_close(resource_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    if (res.__payload.*.closed) {
-        return beam.make(.ok, .{});
-    }
-
-    res.__payload.*.closed = true;
-
-    zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_close(res.__payload.*.ptr);
-
-    if (rc != zvec.ZVEC_OK) {
-        return common.make_error_result(rc);
-    }
-
-    return beam.make(.ok, .{});
-}
-
 pub fn collection_flush(resource_term: beam.term) beam.term {
     var res: resource.CollectionResource = undefined;
     res.get(resource_term, .{ .released = false }) catch
@@ -34,9 +13,6 @@ pub fn collection_flush(resource_term: beam.term) beam.term {
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     zvec.zvec_clear_error();
     const rc = zvec.zvec_collection_flush(data.ptr);
@@ -55,9 +31,6 @@ pub fn collection_optimize(resource_term: beam.term) beam.term {
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     zvec.zvec_clear_error();
     const rc = zvec.zvec_collection_optimize(data.ptr);
@@ -76,9 +49,6 @@ pub fn collection_get_stats(resource_term: beam.term) beam.term {
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     zvec.zvec_clear_error();
     var stats: ?*zvec.zvec_collection_stats_t = null;
@@ -135,9 +105,6 @@ pub fn collection_insert(resource_term: beam.term, docs_list: beam.term) beam.te
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -164,9 +131,6 @@ pub fn collection_insert_with_results(resource_term: beam.term, docs_list: beam.
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -196,9 +160,6 @@ pub fn collection_update(resource_term: beam.term, docs_list: beam.term) beam.te
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -225,9 +186,6 @@ pub fn collection_update_with_results(resource_term: beam.term, docs_list: beam.
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -257,9 +215,6 @@ pub fn collection_upsert(resource_term: beam.term, docs_list: beam.term) beam.te
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -286,9 +241,6 @@ pub fn collection_upsert_with_results(resource_term: beam.term, docs_list: beam.
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -318,9 +270,6 @@ pub fn collection_delete(resource_term: beam.term, pks_list: beam.term) beam.ter
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var pks = document.build_pk_array(pks_list) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build primary key array" } }, .{});
@@ -345,9 +294,6 @@ pub fn collection_delete_with_results(resource_term: beam.term, pks_list: beam.t
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var pks = document.build_pk_array(pks_list) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build primary key array" } }, .{});
@@ -375,9 +321,6 @@ pub fn collection_delete_by_filter(resource_term: beam.term, filter_term: beam.t
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var filter_buf: [65536]u8 = undefined;
     const filter_cstr = common.get_binary_as_cstr(filter_term, &filter_buf) orelse
@@ -400,9 +343,6 @@ pub fn collection_create_index(resource_term: beam.term, field_name_term: beam.t
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
@@ -411,10 +351,12 @@ pub fn collection_create_index(resource_term: beam.term, field_name_term: beam.t
     var params: ?*zvec.zvec_index_params_t = null;
     const build_result = schema.build_index_params(index_map, &params);
     if (!common.atom_eql(build_result, "ok")) return build_result;
-    defer zvec.zvec_index_params_destroy(params);
+    const params_ptr = params orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "index params unexpectedly null" } }, .{});
+    defer zvec.zvec_index_params_destroy(params_ptr);
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_create_index(data.ptr, field_cstr, params);
+    const rc = zvec.zvec_collection_create_index(data.ptr, field_cstr, params_ptr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -430,9 +372,6 @@ pub fn collection_drop_index(resource_term: beam.term, field_name_term: beam.ter
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
@@ -455,9 +394,6 @@ pub fn collection_add_column(resource_term: beam.term, field_map: beam.term, exp
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     const built = schema.build_field_schema(field_map);
     if (built.field_schema == null) return built.result;
@@ -486,9 +422,6 @@ pub fn collection_drop_column(resource_term: beam.term, column_name_term: beam.t
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var name_buf: [4096]u8 = undefined;
     const name_cstr = common.get_binary_as_cstr(column_name_term, &name_buf) orelse
@@ -511,9 +444,6 @@ pub fn collection_alter_column(resource_term: beam.term, column_name_term: beam.
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var col_buf: [4096]u8 = undefined;
     const col_cstr = common.get_binary_as_cstr(column_name_term, &col_buf) orelse
@@ -552,9 +482,6 @@ pub fn collection_get_options(resource_term: beam.term) beam.term {
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     zvec.zvec_clear_error();
     var opts: ?*zvec.zvec_collection_options_t = null;
@@ -588,9 +515,6 @@ pub fn collection_has_field(resource_term: beam.term, field_name_term: beam.term
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
@@ -619,9 +543,6 @@ pub fn collection_has_index(resource_term: beam.term, field_name_term: beam.term
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
@@ -650,9 +571,6 @@ pub fn collection_field_names(resource_term: beam.term, category_term: beam.term
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     zvec.zvec_clear_error();
     var c_schema: ?*zvec.zvec_collection_schema_t = null;
@@ -726,9 +644,6 @@ pub fn collection_fetch(resource_term: beam.term, pks_list: beam.term) beam.term
 
     const data = res.unpack();
 
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     var pks = document.build_pk_array(pks_list) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build primary key array" } }, .{});

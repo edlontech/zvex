@@ -210,7 +210,6 @@ pub fn collection_create_and_open(path_term: beam.term, schema_map: beam.term, o
 
     const res = resource.CollectionResource.create(.{
         .ptr = collection_ptr,
-        .closed = false,
     }, .{}) catch
         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate collection resource" } }, .{});
 
@@ -243,7 +242,6 @@ pub fn collection_open(path_term: beam.term, opts_map: beam.term) beam.term {
 
     const res = resource.CollectionResource.create(.{
         .ptr = collection_ptr,
-        .closed = false,
     }, .{}) catch
         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate collection resource" } }, .{});
 
@@ -257,10 +255,6 @@ pub fn collection_get_schema(resource_term: beam.term) beam.term {
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
 
     const data = res.unpack();
-
-    if (data.closed) {
-        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
-    }
 
     zvec.zvec_clear_error();
     var c_schema: ?*zvec.zvec_collection_schema_t = null;

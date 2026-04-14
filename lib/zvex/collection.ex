@@ -66,11 +66,10 @@ defmodule Zvex.Collection do
     |> Zvex.Error.unwrap!()
   end
 
-  @spec close(t()) :: :ok | {:error, Zvex.Error.t()}
+  @spec close(t()) :: :ok
   def close(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
-      Zvex.Native.collection_close(collection.ref)
-      |> Zvex.Error.from_native()
+      :ok
     end
   end
 

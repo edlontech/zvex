@@ -114,7 +114,6 @@ defmodule Zvex.Native do
   pub const collection_create_and_open = schema.collection_create_and_open;
   pub const collection_open = schema.collection_open;
   pub const collection_get_schema = schema.collection_get_schema;
-  pub const collection_close = coll.collection_close;
   pub const collection_flush = coll.collection_flush;
   pub const collection_optimize = coll.collection_optimize;
   pub const collection_get_stats = coll.collection_get_stats;

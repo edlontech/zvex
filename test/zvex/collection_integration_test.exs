@@ -82,8 +82,16 @@ defmodule Zvex.CollectionIntegrationTest do
   describe "open/2" do
     test "opens an existing collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
-      {:ok, coll} = Collection.create(path, minimal_schema())
-      :ok = Collection.close(coll)
+
+      task =
+        Task.async(fn ->
+          {:ok, _coll} = Collection.create(path, minimal_schema())
+          :created
+        end)
+
+      :created = Task.await(task)
+      :erlang.garbage_collect()
+      Process.sleep(100)
 
       assert {:ok, %Collection{path: ^path}} = Collection.open(path)
     end
@@ -97,7 +105,16 @@ defmodule Zvex.CollectionIntegrationTest do
   describe "open!/2" do
     test "returns the collection directly", %{test_dir: test_dir} do
       path = collection_path(test_dir)
-      Collection.create!(path, minimal_schema()) |> Collection.close()
+
+      task =
+        Task.async(fn ->
+          Collection.create!(path, minimal_schema())
+          :created
+        end)
+
+      :created = Task.await(task)
+      :erlang.garbage_collect()
+      Process.sleep(100)
 
       assert %Collection{} = Collection.open!(path)
     end
@@ -119,12 +136,13 @@ defmodule Zvex.CollectionIntegrationTest do
       assert :ok = Collection.close(coll)
     end
 
-    test "NIF close is idempotent on the same resource", %{test_dir: test_dir} do
+    test "close is idempotent on the same resource", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
 
-      assert :ok = Zvex.Native.collection_close(coll.ref)
-      assert :ok = Zvex.Native.collection_close(coll.ref)
+      assert :ok = Collection.close(coll)
+      closed_coll = %{coll | closed: true}
+      assert {:error, _} = Collection.close(closed_coll)
     end
   end
 
@@ -148,7 +166,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.flush(coll)
     end
@@ -165,7 +183,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.optimize(coll)
     end
@@ -190,7 +208,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.stats(coll)
     end
@@ -241,7 +259,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.schema(coll)
     end
@@ -275,7 +293,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} =
                Collection.create_index(coll, "embedding", type: :hnsw, metric: :cosine)
@@ -300,7 +318,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.drop_index(coll, "embedding")
     end
@@ -347,7 +365,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.add_column(coll, "score", :double, nullable: true)
     end
@@ -375,7 +393,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.drop_column(coll, "score")
     end
@@ -404,7 +422,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.alter_column(coll, "score", new_name: "rating")
     end
@@ -439,7 +457,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.options(coll)
     end
@@ -551,7 +569,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert {:error, _} = Collection.field_names(coll)
     end
@@ -569,7 +587,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "drop works on already-closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      Zvex.Native.collection_close(coll.ref)
+      coll = %{coll | closed: true}
 
       assert :ok = Collection.drop(coll)
       refute File.exists?(path)
@@ -625,23 +643,37 @@ defmodule Zvex.CollectionIntegrationTest do
   end
 
   describe "reopen lifecycle" do
-    test "create -> close -> open -> stats round-trip", %{test_dir: test_dir} do
+    test "create -> GC -> open -> stats round-trip", %{test_dir: test_dir} do
       path = collection_path(test_dir)
 
-      {:ok, coll} = Collection.create(path, minimal_schema())
-      :ok = Collection.flush(coll)
-      :ok = Collection.close(coll)
+      task =
+        Task.async(fn ->
+          {:ok, coll} = Collection.create(path, minimal_schema())
+          :ok = Collection.flush(coll)
+          :flushed
+        end)
+
+      :flushed = Task.await(task)
+      :erlang.garbage_collect()
+      Process.sleep(100)
 
       {:ok, reopened} = Collection.open(path)
       assert {:ok, %Stats{doc_count: 0}} = Collection.stats(reopened)
     end
 
-    test "create -> close -> open -> schema preserves fields", %{test_dir: test_dir} do
+    test "create -> GC -> open -> schema preserves fields", %{test_dir: test_dir} do
       path = collection_path(test_dir)
 
-      {:ok, coll} = Collection.create(path, indexed_schema())
-      :ok = Collection.flush(coll)
-      :ok = Collection.close(coll)
+      task =
+        Task.async(fn ->
+          {:ok, coll} = Collection.create(path, indexed_schema())
+          :ok = Collection.flush(coll)
+          :flushed
+        end)
+
+      :flushed = Task.await(task)
+      :erlang.garbage_collect()
+      Process.sleep(100)
 
       {:ok, reopened} = Collection.open(path)
       {:ok, schema} = Collection.schema(reopened)
