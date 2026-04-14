@@ -156,36 +156,22 @@ pub fn collection_query(resource_term: beam.term, query_map: beam.term) beam.ter
                         return common.make_error_result(rc);
                     }
                 } else if (common.atom_eql(type_term, "flat")) {
-                    const use_refiner = if (common.get_map_value(opts_map, "use_refiner")) |ur| common.atom_eql(ur, "true") else false;
-                    const scale_factor: f32 = if (common.get_map_value(opts_map, "scale_factor")) |sf| (common.get_float_from_term(sf) orelse 1.0) else 1.0;
-                    const flat = zvec.zvec_query_params_flat_create(use_refiner, scale_factor) orelse {
+                    // Flat (brute-force) search is implemented via HNSW params
+                    // with is_linear=true, which forces a linear scan. Using the
+                    // flat params API directly segfaults because the C library
+                    // dispatches on the *index* type (e.g. HNSW) and then
+                    // dynamic_casts the query params to the matching C++ class
+                    // without a null-check.
+                    const flat_radius: f32 = if (common.get_map_value(opts_map, "radius")) |r_term| (common.get_float_from_term(r_term) orelse 0.0) else 0.0;
+                    const flat_refiner: bool = if (common.get_map_value(opts_map, "use_refiner")) |ur| common.atom_eql(ur, "true") else false;
+                    const hnsw = zvec.zvec_query_params_hnsw_create(0, flat_radius, true, flat_refiner) orelse {
                         zvec.zvec_vector_query_destroy(query);
                         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate flat params" } }, .{});
                     };
-                    if (common.get_map_value(opts_map, "radius")) |r_term| {
-                        if (common.get_float_from_term(r_term)) |r| {
-                            zvec.zvec_clear_error();
-                            const rc = zvec.zvec_query_params_flat_set_radius(flat, r);
-                            if (rc != zvec.ZVEC_OK) {
-                                zvec.zvec_query_params_flat_destroy(flat);
-                                zvec.zvec_vector_query_destroy(query);
-                                return common.make_error_result(rc);
-                            }
-                        }
-                    }
-                    if (common.get_map_value(opts_map, "is_linear")) |il_term| {
-                        zvec.zvec_clear_error();
-                        const rc = zvec.zvec_query_params_flat_set_is_linear(flat, common.atom_eql(il_term, "true"));
-                        if (rc != zvec.ZVEC_OK) {
-                            zvec.zvec_query_params_flat_destroy(flat);
-                            zvec.zvec_vector_query_destroy(query);
-                            return common.make_error_result(rc);
-                        }
-                    }
                     zvec.zvec_clear_error();
-                    const rc = zvec.zvec_vector_query_set_flat_params(query, flat);
+                    const rc = zvec.zvec_vector_query_set_hnsw_params(query, hnsw);
                     if (rc != zvec.ZVEC_OK) {
-                        zvec.zvec_query_params_flat_destroy(flat);
+                        zvec.zvec_query_params_hnsw_destroy(hnsw);
                         zvec.zvec_vector_query_destroy(query);
                         return common.make_error_result(rc);
                     }

@@ -188,6 +188,38 @@ defmodule Zvex.QueryIntegrationTest do
     end
   end
 
+  describe "flat (brute-force) params" do
+    setup [:create_collection]
+
+    test "flat params execute without error on HNSW collection", %{collection: coll} do
+      seed_and_flush(coll)
+
+      q =
+        Query.new()
+        |> Query.field("embedding")
+        |> Query.vector([1.0, 0.0, 0.0, 0.0])
+        |> Query.top_k(2)
+        |> Query.flat()
+
+      assert {:ok, results} = Query.execute(q, coll)
+      assert length(results) == 2
+    end
+
+    test "flat query returns exact nearest neighbor", %{collection: coll} do
+      seed_and_flush(coll)
+
+      q =
+        Query.new()
+        |> Query.field("embedding")
+        |> Query.vector([1.0, 0.0, 0.0, 0.0])
+        |> Query.top_k(1)
+        |> Query.flat()
+
+      assert {:ok, [top]} = Query.execute(q, coll)
+      assert top.pk == "doc-1"
+    end
+  end
+
   describe "error paths" do
     setup [:create_collection]
 

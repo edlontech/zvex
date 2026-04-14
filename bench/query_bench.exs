@@ -102,7 +102,14 @@ for size <- [1_000, 10_000, 50_000] do
         |> Query.output_fields(["category", "value"])
         |> Query.execute!(coll)
       end,
-      # NOTE: flat (brute force) query omitted -- causes segfault in NIF layer
+      "flat (brute force) top_k=10" => fn ->
+        Query.new()
+        |> Query.field("embedding")
+        |> Query.vector(query_vec)
+        |> Query.top_k(10)
+        |> Query.flat()
+        |> Query.execute!(coll)
+      end,
       "hnsw ef=64 top_k=10" => fn ->
         Query.new()
         |> Query.field("embedding")
