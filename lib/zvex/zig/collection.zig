@@ -11,21 +11,19 @@ pub fn collection_close(resource_term: beam.term) beam.term {
     res.get(resource_term, .{ .released = false }) catch
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
 
-    var data = res.unpack();
-    _ = &data;
-
-    if (data.closed) {
+    if (res.__payload.*.closed) {
         return beam.make(.ok, .{});
     }
 
+    res.__payload.*.closed = true;
+
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_close(data.ptr);
+    const rc = zvec.zvec_collection_close(res.__payload.*.ptr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
     }
 
-    res.__payload.*.closed = true;
     return beam.make(.ok, .{});
 }
 
@@ -90,7 +88,8 @@ pub fn collection_get_stats(resource_term: beam.term) beam.term {
         return common.make_error_result(rc);
     }
 
-    const stats_ptr = stats.?;
+    const stats_ptr = stats orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "stats returned null" } }, .{});
     const doc_count = zvec.zvec_collection_stats_get_doc_count(stats_ptr);
     const index_count = zvec.zvec_collection_stats_get_index_count(stats_ptr);
 
@@ -565,7 +564,8 @@ pub fn collection_get_options(resource_term: beam.term) beam.term {
         return common.make_error_result(rc);
     }
 
-    const opts_ptr = opts.?;
+    const opts_ptr = opts orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "options returned null" } }, .{});
     const enable_mmap = zvec.zvec_collection_options_get_enable_mmap(opts_ptr);
     const max_buffer_size = zvec.zvec_collection_options_get_max_buffer_size(opts_ptr);
     const read_only = zvec.zvec_collection_options_get_read_only(opts_ptr);
@@ -604,7 +604,8 @@ pub fn collection_has_field(resource_term: beam.term, field_name_term: beam.term
         return common.make_error_result(rc);
     }
 
-    const schema_ptr = c_schema.?;
+    const schema_ptr = c_schema orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "schema returned null" } }, .{});
     const result = zvec.zvec_collection_schema_has_field(schema_ptr, field_cstr);
     zvec.zvec_collection_schema_destroy(schema_ptr);
 
@@ -634,7 +635,8 @@ pub fn collection_has_index(resource_term: beam.term, field_name_term: beam.term
         return common.make_error_result(rc);
     }
 
-    const schema_ptr = c_schema.?;
+    const schema_ptr = c_schema orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "schema returned null" } }, .{});
     const result = zvec.zvec_collection_schema_has_index(schema_ptr, field_cstr);
     zvec.zvec_collection_schema_destroy(schema_ptr);
 
@@ -660,7 +662,8 @@ pub fn collection_field_names(resource_term: beam.term, category_term: beam.term
         return common.make_error_result(schema_rc);
     }
 
-    const schema_ptr = c_schema.?;
+    const schema_ptr = c_schema orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "schema returned null" } }, .{});
 
     var names: [*c][*c]const u8 = undefined;
     var count: usize = 0;

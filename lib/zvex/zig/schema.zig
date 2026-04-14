@@ -124,9 +124,12 @@ fn setup_index_params(field_schema: *zvec.zvec_field_schema_t, index_map: beam.t
     const result = build_index_params(index_map, &params);
     if (!common.atom_eql(result, "ok")) return result;
 
+    const params_ptr = params orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "index params unexpectedly null" } }, .{});
+
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_field_schema_set_index_params(field_schema, params.?);
-    zvec.zvec_index_params_destroy(params);
+    const rc = zvec.zvec_field_schema_set_index_params(field_schema, params_ptr);
+    zvec.zvec_index_params_destroy(params_ptr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -202,8 +205,11 @@ pub fn collection_create_and_open(path_term: beam.term, schema_map: beam.term, o
         return common.make_error_result(rc);
     }
 
+    const collection_ptr = collection orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "collection pointer is null after create" } }, .{});
+
     const res = resource.CollectionResource.create(.{
-        .ptr = collection.?,
+        .ptr = collection_ptr,
         .closed = false,
     }, .{}) catch
         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate collection resource" } }, .{});
@@ -232,8 +238,11 @@ pub fn collection_open(path_term: beam.term, opts_map: beam.term) beam.term {
         return common.make_error_result(rc);
     }
 
+    const collection_ptr = collection orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "collection pointer is null after open" } }, .{});
+
     const res = resource.CollectionResource.create(.{
-        .ptr = collection.?,
+        .ptr = collection_ptr,
         .closed = false,
     }, .{}) catch
         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate collection resource" } }, .{});
@@ -261,7 +270,8 @@ pub fn collection_get_schema(resource_term: beam.term) beam.term {
         return common.make_error_result(rc);
     }
 
-    const schema_ptr = c_schema.?;
+    const schema_ptr = c_schema orelse
+        return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "schema returned null" } }, .{});
 
     const schema_name_ptr = zvec.zvec_collection_schema_get_name(schema_ptr);
     var schema_name_term: beam.term = undefined;

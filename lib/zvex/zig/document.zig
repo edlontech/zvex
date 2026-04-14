@@ -506,12 +506,11 @@ pub fn doc_deserialize(binary: beam.term) beam.term {
         return common.make_error_result(rc);
     }
 
-    if (doc == null) {
+    const doc_ptr = doc orelse
         return beam.make(.{ .@"error", .{ beam.make(.internal_error, .{}), "deserialize returned null doc" } }, .{});
-    }
 
-    defer zvec.zvec_doc_destroy(doc.?);
-    const result = extract_doc_to_term(doc.?);
+    defer zvec.zvec_doc_destroy(doc_ptr);
+    const result = extract_doc_to_term(doc_ptr);
 
     return beam.make(.{ .ok, result }, .{});
 }
