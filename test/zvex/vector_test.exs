@@ -54,7 +54,7 @@ defmodule Zvex.VectorTest do
     end
 
     test "int16" do
-      input = [1, -1, 32767, -32768, 0]
+      input = [1, -1, 32_767, -32_768, 0]
       vector = Vector.from_list(input, :int16)
 
       assert %Vector{type: :vector_int16} = vector

@@ -79,7 +79,7 @@ defmodule Zvex.Collection.Schema do
   def max_doc_count_per_segment(%__MODULE__{} = schema, count),
     do: %{schema | max_doc_count_per_segment: count}
 
-  @spec validate(t()) :: :ok | {:error, Zvex.Error.Invalid.Argument.t()}
+  @spec validate(t()) :: :ok | {:error, Zvex.Error.t()}
   def validate(%__MODULE__{} = schema) do
     with :ok <- validate_name(schema.name),
          :ok <- validate_fields_present(schema.fields),
@@ -87,9 +87,8 @@ defmodule Zvex.Collection.Schema do
          :ok <- validate_field_names_unique(schema.fields),
          :ok <- validate_data_types(schema.fields),
          :ok <- validate_vector_dimensions(schema.fields),
-         :ok <- validate_index_compatibility(schema.fields),
-         :ok <- validate_max_doc_count(schema.max_doc_count_per_segment) do
-      :ok
+         :ok <- validate_index_compatibility(schema.fields) do
+      validate_max_doc_count(schema.max_doc_count_per_segment)
     end
   end
 

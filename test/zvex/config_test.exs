@@ -47,18 +47,13 @@ defmodule Zvex.ConfigTest do
       assert config.log == {:console, %{level: :warn}}
     end
 
-    test "log/3 sets file config" do
-      config = Config.new() |> Config.log(:file, dir: "/tmp", basename: "zvec", level: :info)
-      assert config.log == {:file, %{dir: "/tmp", basename: "zvec", level: :info}}
-    end
-
     test "log/3 called twice replaces previous config" do
       config =
         Config.new()
         |> Config.log(:console, level: :warn)
-        |> Config.log(:file, dir: "/tmp", basename: "zvec")
+        |> Config.log(:console, level: :error)
 
-      assert {:file, _} = config.log
+      assert {:console, %{level: :error}} = config.log
     end
 
     test "full pipeline builds config" do
@@ -109,16 +104,6 @@ defmodule Zvex.ConfigTest do
       config = Config.new() |> Config.log(:console, level: :bogus)
       assert {:error, %Zvex.Error.Invalid.Argument{}} = Config.validate(config)
     end
-
-    test "rejects file log missing dir" do
-      config = Config.new() |> Config.log(:file, level: :info, basename: "zvec")
-      assert {:error, %Zvex.Error.Invalid.Argument{}} = Config.validate(config)
-    end
-
-    test "rejects file log missing basename" do
-      config = Config.new() |> Config.log(:file, level: :info, dir: "/tmp")
-      assert {:error, %Zvex.Error.Invalid.Argument{}} = Config.validate(config)
-    end
   end
 
   describe "to_native_map/1" do
@@ -144,28 +129,6 @@ defmodule Zvex.ConfigTest do
         |> Config.to_native_map()
 
       assert native.log == %{type: :console, level: :warn}
-    end
-
-    test "converts file log tuple to map" do
-      native =
-        Config.new()
-        |> Config.log(:file,
-          dir: "/tmp",
-          basename: "zvec",
-          level: :info,
-          file_size: 100,
-          overdue_days: 7
-        )
-        |> Config.to_native_map()
-
-      assert native.log == %{
-               type: :file,
-               dir: "/tmp",
-               basename: "zvec",
-               level: :info,
-               file_size: 100,
-               overdue_days: 7
-             }
     end
   end
 end

@@ -112,13 +112,8 @@ defmodule Zvex.Document do
 
     Enum.reduce(map, new(), fn {key, value}, doc ->
       case Map.fetch(field_defs, key) do
-        {:ok, field_def} ->
-          doc = if field_def.primary_key, do: put_pk(doc, value), else: doc
-          coerced = coerce_value(value, field_def.data_type)
-          %{doc | fields: Map.put(doc.fields, key, {field_def.data_type, coerced})}
-
-        :error ->
-          doc
+        {:ok, field_def} -> apply_field(doc, key, value, field_def)
+        :error -> doc
       end
     end)
   end
@@ -128,13 +123,12 @@ defmodule Zvex.Document do
     Map.new(fields, fn {key, {_type, value}} -> {key, value} end)
   end
 
-  @spec validate(t(), Schema.t()) :: :ok | {:error, Zvex.Error.Invalid.Argument.t()}
+  @spec validate(t(), Schema.t()) :: :ok | {:error, Zvex.Error.t()}
   def validate(%__MODULE__{} = doc, %Schema{} = schema) do
     with :ok <- validate_pk(doc, schema),
          :ok <- validate_required_fields(doc, schema),
-         :ok <- validate_field_types(doc, schema),
-         :ok <- validate_dimensions(doc, schema) do
-      :ok
+         :ok <- validate_field_types(doc, schema) do
+      validate_dimensions(doc, schema)
     end
   end
 
@@ -200,6 +194,12 @@ defmodule Zvex.Document do
   def detail_string!(doc), do: detail_string(doc) |> Zvex.Error.unwrap!()
 
   # -- Private helpers -------------------------------------------------------
+
+  defp apply_field(doc, key, value, field_def) do
+    doc = if field_def.primary_key, do: put_pk(doc, value), else: doc
+    coerced = coerce_value(value, field_def.data_type)
+    %{doc | fields: Map.put(doc.fields, key, {field_def.data_type, coerced})}
+  end
 
   defp coerce_value(%Vector{type: _type, data: data}, _data_type), do: data
 

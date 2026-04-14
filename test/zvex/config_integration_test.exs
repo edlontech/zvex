@@ -33,14 +33,6 @@ defmodule Zvex.ConfigIntegrationTest do
       assert :ok = Zvex.initialize(config)
     end
 
-    @tag :tmp_dir
-    test "initializes with file log config", %{tmp_dir: tmp_dir} do
-      config =
-        Config.new() |> Config.log(:file, dir: tmp_dir, basename: "zvec_test", level: :info)
-
-      assert :ok = Zvex.initialize(config)
-    end
-
     test "initializes with all config options" do
       config =
         Config.new()

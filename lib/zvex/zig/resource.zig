@@ -5,11 +5,14 @@ const zvec = common.zvec;
 
 pub const CollectionData = struct {
     ptr: *zvec.zvec_collection_t,
+    closed: bool,
 };
 
 pub const CollectionCallbacks = struct {
     pub fn dtor(data: *CollectionData) void {
-        _ = zvec.zvec_collection_close(data.ptr);
+        if (@cmpxchgStrong(bool, &data.closed, false, true, .seq_cst, .seq_cst) == null) {
+            _ = zvec.zvec_collection_close(data.ptr);
+        }
     }
 };
 

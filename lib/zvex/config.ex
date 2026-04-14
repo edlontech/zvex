@@ -20,18 +20,7 @@ defmodule Zvex.Config do
                         level: @log_level_schema |> Zoi.optional()
                       })
 
-  @file_log_schema Zoi.map(%{
-                     level: @log_level_schema |> Zoi.optional(),
-                     dir: Zoi.string(),
-                     basename: Zoi.string(),
-                     file_size: Zoi.integer() |> Zoi.positive() |> Zoi.optional(),
-                     overdue_days: Zoi.integer() |> Zoi.positive() |> Zoi.optional()
-                   })
-
-  @log_schema Zoi.union([
-                Zoi.tuple({Zoi.literal(:console), @console_log_schema}),
-                Zoi.tuple({Zoi.literal(:file), @file_log_schema})
-              ])
+  @log_schema Zoi.tuple({Zoi.literal(:console), @console_log_schema})
 
   @schema Zoi.struct(__MODULE__, %{
             memory_limit: Zoi.integer() |> Zoi.positive() |> Zoi.nullish(),
@@ -68,16 +57,11 @@ defmodule Zvex.Config do
   def brute_force_by_keys_ratio(%__MODULE__{} = config, ratio),
     do: %{config | brute_force_by_keys_ratio: ratio}
 
-  @spec log(t(), :console | :file, keyword()) :: t()
-  def log(config, type, opts \\ [])
-
-  def log(%__MODULE__{} = config, :console, opts),
+  @spec log(t(), :console, keyword()) :: t()
+  def log(%__MODULE__{} = config, :console, opts \\ []),
     do: %{config | log: {:console, Map.new(opts)}}
 
-  def log(%__MODULE__{} = config, :file, opts),
-    do: %{config | log: {:file, Map.new(opts)}}
-
-  @spec validate(t()) :: {:ok, t()} | {:error, Zvex.Error.Invalid.Argument.t()}
+  @spec validate(t()) :: {:ok, t()} | {:error, Zvex.Error.t()}
   def validate(%__MODULE__{} = config) do
     case Zoi.parse(@schema, config) do
       {:ok, _validated} ->

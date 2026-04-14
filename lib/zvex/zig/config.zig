@@ -12,22 +12,6 @@ fn create_log_config(log_map: beam.term) ?*zvec.zvec_log_config_t {
         return zvec.zvec_config_log_create_console(level);
     }
 
-    if (common.atom_eql(type_term, "file")) {
-        var dir_buf: [4096]u8 = undefined;
-        var base_buf: [256]u8 = undefined;
-
-        const dir_term = common.get_map_value(log_map, "dir") orelse return null;
-        const base_term = common.get_map_value(log_map, "basename") orelse return null;
-
-        const dir_cstr = common.get_binary_as_cstr(dir_term, &dir_buf) orelse return null;
-        const base_cstr = common.get_binary_as_cstr(base_term, &base_buf) orelse return null;
-
-        const file_size: u32 = if (common.get_map_value(log_map, "file_size")) |fs| (common.get_int_from_term(u32, fs) orelse 100) else 100;
-        const overdue_days: u32 = if (common.get_map_value(log_map, "overdue_days")) |od| (common.get_int_from_term(u32, od) orelse 7) else 7;
-
-        return zvec.zvec_config_log_create_file(level, dir_cstr, base_cstr, file_size, overdue_days);
-    }
-
     return null;
 }
 

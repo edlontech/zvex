@@ -1,7 +1,9 @@
 defmodule Zvex.Error.Unknown do
+  @moduledoc "Error class for unknown/unclassified errors."
   use Splode.ErrorClass, class: :unknown
 
   defmodule Unknown do
+    @moduledoc "An error with an unknown or unclassifiable cause."
     use Splode.Error, fields: [:message], class: :unknown
 
     def message(%{message: message}) when is_binary(message), do: message

@@ -64,10 +64,7 @@ defmodule Zvex.QueryIntegrationTest do
 
       q = Query.new() |> Query.field("embedding") |> Query.vector([1.0, 0.0, 0.0, 0.0])
 
-      assert {:ok, results} = Query.execute(q, coll)
-      assert length(results) > 0
-
-      result = hd(results)
+      assert {:ok, [result | _]} = Query.execute(q, coll)
       assert is_binary(result.pk)
       assert is_float(result.score)
     end
@@ -114,7 +111,7 @@ defmodule Zvex.QueryIntegrationTest do
 
       assert {:ok, results} = Query.execute(q, coll)
 
-      assert length(results) > 0
+      assert results != []
       assert Enum.all?(results, fn r -> match?({:string, "art"}, r.fields["category"]) end)
     end
   end

@@ -6,6 +6,25 @@ const document = @import("document.zig");
 const resource = @import("resource.zig");
 const schema = @import("schema.zig");
 
+pub fn collection_close(resource_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    if (@cmpxchgStrong(bool, &res.__payload.*.closed, false, true, .seq_cst, .seq_cst) != null) {
+        return beam.make(.ok, .{});
+    }
+
+    zvec.zvec_clear_error();
+    const rc = zvec.zvec_collection_close(res.__payload.*.ptr);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    return beam.make(.ok, .{});
+}
+
 pub fn collection_flush(resource_term: beam.term) beam.term {
     var res: resource.CollectionResource = undefined;
     res.get(resource_term, .{ .released = false }) catch

@@ -66,10 +66,11 @@ defmodule Zvex.Collection do
     |> Zvex.Error.unwrap!()
   end
 
-  @spec close(t()) :: :ok
+  @spec close(t()) :: :ok | {:error, Zvex.Error.t()}
   def close(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
-      :ok
+      Zvex.Native.collection_close(collection.ref)
+      |> Zvex.Error.from_native()
     end
   end
 
@@ -82,10 +83,7 @@ defmodule Zvex.Collection do
   @spec drop(t()) :: :ok | {:error, Zvex.Error.t()}
   def drop(%__MODULE__{} = collection) do
     unless collection.closed do
-      case close(collection) do
-        :ok -> :ok
-        {:error, _} -> :ok
-      end
+      close(collection)
     end
 
     File.rm_rf!(collection.path)
