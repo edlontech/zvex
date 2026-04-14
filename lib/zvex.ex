@@ -62,6 +62,22 @@ defmodule Zvex do
     Zvex.Native.is_initialized()
   end
 
+  @doc """
+  Checks if the linked zvec library is compatible with the given version.
+
+  Returns `true` if the library version is >= the requested version.
+
+  ## Examples
+
+      iex> Zvex.compatible?(0, 0, 1)
+      true
+  """
+  @spec compatible?(non_neg_integer(), non_neg_integer(), non_neg_integer()) :: boolean()
+  def compatible?(major, minor, patch)
+      when is_integer(major) and is_integer(minor) and is_integer(patch) do
+    Zvex.Native.check_version(major, minor, patch)
+  end
+
   # -- Collection lifecycle --------------------------------------------------
 
   def create(path, schema), do: Zvex.Collection.create(path, schema)

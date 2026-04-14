@@ -84,6 +84,10 @@ defmodule Zvex.Native do
       return zvec.zvec_get_version_patch();
   }
 
+  pub fn check_version(major: c_int, minor: c_int, patch: c_int) bool {
+      return zvec.zvec_check_version(major, minor, patch);
+  }
+
   pub fn initialize() beam.term {
       zvec.zvec_clear_error();
       const rc = zvec.zvec_initialize(null);
