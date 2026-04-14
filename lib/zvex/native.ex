@@ -26,6 +26,7 @@ defmodule Zvex.Native do
       collection_delete_with_results: [:dirty_cpu],
       collection_delete_by_filter: [:dirty_cpu],
       collection_fetch: [:dirty_cpu],
+      collection_query: [:dirty_cpu],
       doc_serialize: [:dirty_cpu],
       doc_deserialize: [:dirty_cpu]
     ],
@@ -1416,6 +1417,54 @@ defmodule Zvex.Native do
       }, .{});
   }
 
+  // =========================================================================
+  // extract_query_result_to_term — private helper (includes score + doc_id)
+  // =========================================================================
+
+  fn extract_query_result_to_term(doc: *const zvec.zvec_doc_t) beam.term {
+      var pk_term: beam.term = beam.make(.@"nil", .{});
+      const pk_ptr = zvec.zvec_doc_get_pk_copy(doc);
+      if (pk_ptr) |pkp| {
+          const pk_len = std.mem.len(@as([*:0]const u8, @ptrCast(pkp)));
+          pk_term = beam.make(@as([*]const u8, @ptrCast(pkp))[0..pk_len], .{});
+          zvec.zvec_free(@constCast(@ptrCast(pkp)));
+      }
+
+      const score: f64 = @floatCast(zvec.zvec_doc_get_score(doc));
+      const doc_id: u64 = zvec.zvec_doc_get_doc_id(doc);
+
+      var field_names: [*c][*c]u8 = undefined;
+      var field_count: usize = 0;
+      const names_rc = zvec.zvec_doc_get_field_names(doc, @ptrCast(&field_names), &field_count);
+
+      if (names_rc != zvec.ZVEC_OK) {
+          return beam.make(.{
+              .pk = pk_term,
+              .score = score,
+              .doc_id = doc_id,
+              .fields = beam.make_empty_list(.{}),
+          }, .{});
+      }
+
+      var fields_list = beam.make_empty_list(.{});
+      var fi: usize = field_count;
+      while (fi > 0) {
+          fi -= 1;
+          const fname: [*:0]const u8 = @ptrCast(field_names[fi]);
+          const entry = extract_field_value(doc, fname);
+          fields_list = beam.make_list_cell(entry, fields_list, .{});
+      }
+
+      zvec.zvec_free_str_array(@ptrCast(field_names), field_count);
+
+      return beam.make(.{
+          .pk = pk_term,
+          .score = score,
+          .doc_id = doc_id,
+          .fields = fields_list,
+      }, .{});
+  }
+
   fn make_write_results_list(results: [*c]zvec.zvec_write_result_t, count: usize) beam.term {
       var list = beam.make_empty_list(.{});
       var idx: usize = count;
@@ -1783,6 +1832,238 @@ defmodule Zvex.Native do
       zvec.zvec_docs_free(@ptrCast(result_docs), found_count);
 
       return beam.make(.{ .ok, docs_result_list }, .{});
+  }
+
+  // =========================================================================
+  // collection_query/2 — dirty CPU NIF
+  // =========================================================================
+
+  pub fn collection_query(resource_term: beam.term, query_map: beam.term) beam.term {
+      var resource: CollectionResource = undefined;
+      resource.get(resource_term, .{ .released = false }) catch
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+      const data = resource.unpack();
+
+      if (data.closed) {
+          return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+      }
+
+      // Step 2: allocate query
+      const query = zvec.zvec_vector_query_create() orelse
+          return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate query" } }, .{});
+
+      // Step 3: field name
+      const field_term = get_map_value(query_map, "field") orelse {
+          zvec.zvec_vector_query_destroy(query);
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "missing field" } }, .{});
+      };
+      var field_buf: [4096]u8 = undefined;
+      const field_cstr = get_binary_as_cstr(field_term, &field_buf) orelse {
+          zvec.zvec_vector_query_destroy(query);
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{});
+      };
+      zvec.zvec_clear_error();
+      {
+          const rc = zvec.zvec_vector_query_set_field_name(query, field_cstr);
+          if (rc != zvec.ZVEC_OK) {
+              zvec.zvec_vector_query_destroy(query);
+              return make_error_result(rc);
+          }
+      }
+
+      // Step 4: query vector
+      const vector_term = get_map_value(query_map, "vector") orelse {
+          zvec.zvec_vector_query_destroy(query);
+          return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "missing vector" } }, .{});
+      };
+      {
+          var vec_bin: e.ErlNifBinary = undefined;
+          if (e.enif_inspect_binary(beam.context.env, vector_term.v, &vec_bin) == 0) {
+              zvec.zvec_vector_query_destroy(query);
+              return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid vector binary" } }, .{});
+          }
+          zvec.zvec_clear_error();
+          const rc = zvec.zvec_vector_query_set_query_vector(query, vec_bin.data, vec_bin.size);
+          if (rc != zvec.ZVEC_OK) {
+              zvec.zvec_vector_query_destroy(query);
+              return make_error_result(rc);
+          }
+      }
+
+      // Step 5: top_k (no error code)
+      if (get_map_value(query_map, "top_k")) |topk_term| {
+          if (get_int_from_term(c_int, topk_term)) |topk| {
+              _ = zvec.zvec_vector_query_set_topk(query, topk);
+          }
+      }
+
+      // Step 6: filter
+      if (get_map_value(query_map, "filter")) |filter_term| {
+          if (!atom_eql(filter_term, "nil")) {
+              var filter_buf: [65536]u8 = undefined;
+              if (get_binary_as_cstr(filter_term, &filter_buf)) |filter_cstr| {
+                  zvec.zvec_clear_error();
+                  const rc = zvec.zvec_vector_query_set_filter(query, filter_cstr);
+                  if (rc != zvec.ZVEC_OK) {
+                      zvec.zvec_vector_query_destroy(query);
+                      return make_error_result(rc);
+                  }
+              }
+          }
+      }
+
+      // Step 7: output_fields
+      if (get_map_value(query_map, "output_fields")) |fields_list_term| {
+          var fields_arr = build_pk_array(fields_list_term) orelse {
+              zvec.zvec_vector_query_destroy(query);
+              return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to build output fields array" } }, .{});
+          };
+          defer fields_arr.deinit();
+          if (fields_arr.count > 0) {
+              zvec.zvec_clear_error();
+              const rc = zvec.zvec_vector_query_set_output_fields(query, @ptrCast(fields_arr.ptrs), fields_arr.count);
+              if (rc != zvec.ZVEC_OK) {
+                  zvec.zvec_vector_query_destroy(query);
+                  return make_error_result(rc);
+              }
+          }
+      }
+
+      // Steps 8-9: include flags (no error code)
+      if (get_map_value(query_map, "include_vector")) |iv_term| {
+          _ = zvec.zvec_vector_query_set_include_vector(query, atom_eql(iv_term, "true"));
+      }
+      if (get_map_value(query_map, "include_doc_id")) |id_term| {
+          _ = zvec.zvec_vector_query_set_include_doc_id(query, atom_eql(id_term, "true"));
+      }
+
+      // Steps 10-12: index params
+      if (get_map_value(query_map, "params")) |params_term| {
+          if (!atom_eql(params_term, "nil")) {
+              var arity: c_int = undefined;
+              var tuple_ptr: [*c]const e.ErlNifTerm = undefined;
+              if (e.enif_get_tuple(beam.context.env, params_term.v, &arity, &tuple_ptr) == 1 and arity == 2) {
+                  const type_term = beam.term{ .v = tuple_ptr[0] };
+                  const opts_map = beam.term{ .v = tuple_ptr[1] };
+
+                  if (atom_eql(type_term, "hnsw")) {
+                      const hnsw_ef: c_int = if (get_map_value(opts_map, "ef")) |t| (get_int_from_term(c_int, t) orelse 0) else 0;
+                      const hnsw_radius: f32 = if (get_map_value(opts_map, "radius")) |t| (get_float_from_term(t) orelse 0.0) else 0.0;
+                      const hnsw_linear: bool = if (get_map_value(opts_map, "is_linear")) |t| atom_eql(t, "true") else false;
+                      const hnsw_refiner: bool = if (get_map_value(opts_map, "use_refiner")) |t| atom_eql(t, "true") else false;
+                      const hnsw = zvec.zvec_query_params_hnsw_create(hnsw_ef, hnsw_radius, hnsw_linear, hnsw_refiner) orelse {
+                          zvec.zvec_vector_query_destroy(query);
+                          return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate hnsw params" } }, .{});
+                      };
+                      zvec.zvec_clear_error();
+                      const rc = zvec.zvec_vector_query_set_hnsw_params(query, hnsw);
+                      if (rc != zvec.ZVEC_OK) {
+                          zvec.zvec_query_params_hnsw_destroy(hnsw);
+                          zvec.zvec_vector_query_destroy(query);
+                          return make_error_result(rc);
+                      }
+                  } else if (atom_eql(type_term, "ivf")) {
+                      const ivf_nprobe: c_int = if (get_map_value(opts_map, "nprobe")) |t| (get_int_from_term(c_int, t) orelse 0) else 0;
+                      const ivf_refiner: bool = if (get_map_value(opts_map, "use_refiner")) |t| atom_eql(t, "true") else false;
+                      const ivf_scale: f32 = if (get_map_value(opts_map, "scale_factor")) |t| (get_float_from_term(t) orelse 1.0) else 1.0;
+                      const ivf = zvec.zvec_query_params_ivf_create(ivf_nprobe, ivf_refiner, ivf_scale) orelse {
+                          zvec.zvec_vector_query_destroy(query);
+                          return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate ivf params" } }, .{});
+                      };
+                      if (get_map_value(opts_map, "radius")) |r_term| {
+                          if (get_float_from_term(r_term)) |r| {
+                              zvec.zvec_clear_error();
+                              const rc = zvec.zvec_query_params_ivf_set_radius(ivf, r);
+                              if (rc != zvec.ZVEC_OK) {
+                                  zvec.zvec_query_params_ivf_destroy(ivf);
+                                  zvec.zvec_vector_query_destroy(query);
+                                  return make_error_result(rc);
+                              }
+                          }
+                      }
+                      if (get_map_value(opts_map, "is_linear")) |il_term| {
+                          zvec.zvec_clear_error();
+                          const rc = zvec.zvec_query_params_ivf_set_is_linear(ivf, atom_eql(il_term, "true"));
+                          if (rc != zvec.ZVEC_OK) {
+                              zvec.zvec_query_params_ivf_destroy(ivf);
+                              zvec.zvec_vector_query_destroy(query);
+                              return make_error_result(rc);
+                          }
+                      }
+                      zvec.zvec_clear_error();
+                      const rc = zvec.zvec_vector_query_set_ivf_params(query, ivf);
+                      if (rc != zvec.ZVEC_OK) {
+                          zvec.zvec_query_params_ivf_destroy(ivf);
+                          zvec.zvec_vector_query_destroy(query);
+                          return make_error_result(rc);
+                      }
+                  } else if (atom_eql(type_term, "flat")) {
+                      const use_refiner = if (get_map_value(opts_map, "use_refiner")) |ur| atom_eql(ur, "true") else false;
+                      const scale_factor: f32 = if (get_map_value(opts_map, "scale_factor")) |sf| (get_float_from_term(sf) orelse 1.0) else 1.0;
+                      const flat = zvec.zvec_query_params_flat_create(use_refiner, scale_factor) orelse {
+                          zvec.zvec_vector_query_destroy(query);
+                          return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate flat params" } }, .{});
+                      };
+                      if (get_map_value(opts_map, "radius")) |r_term| {
+                          if (get_float_from_term(r_term)) |r| {
+                              zvec.zvec_clear_error();
+                              const rc = zvec.zvec_query_params_flat_set_radius(flat, r);
+                              if (rc != zvec.ZVEC_OK) {
+                                  zvec.zvec_query_params_flat_destroy(flat);
+                                  zvec.zvec_vector_query_destroy(query);
+                                  return make_error_result(rc);
+                              }
+                          }
+                      }
+                      if (get_map_value(opts_map, "is_linear")) |il_term| {
+                          zvec.zvec_clear_error();
+                          const rc = zvec.zvec_query_params_flat_set_is_linear(flat, atom_eql(il_term, "true"));
+                          if (rc != zvec.ZVEC_OK) {
+                              zvec.zvec_query_params_flat_destroy(flat);
+                              zvec.zvec_vector_query_destroy(query);
+                              return make_error_result(rc);
+                          }
+                      }
+                      zvec.zvec_clear_error();
+                      const rc = zvec.zvec_vector_query_set_flat_params(query, flat);
+                      if (rc != zvec.ZVEC_OK) {
+                          zvec.zvec_query_params_flat_destroy(flat);
+                          zvec.zvec_vector_query_destroy(query);
+                          return make_error_result(rc);
+                      }
+                  }
+              }
+          }
+      }
+
+      // Step 13: execute
+      zvec.zvec_clear_error();
+      var result_docs: [*c]?*zvec.zvec_doc_t = undefined;
+      var result_count: usize = 0;
+      const rc = zvec.zvec_collection_query(data.ptr, query, @ptrCast(&result_docs), &result_count);
+
+      if (rc != zvec.ZVEC_OK) {
+          zvec.zvec_vector_query_destroy(query);
+          return make_error_result(rc);
+      }
+
+      // Step 15: build result list (beam.make is infallible)
+      var results_list = beam.make_empty_list(.{});
+      var ri: usize = result_count;
+      while (ri > 0) {
+          ri -= 1;
+          if (result_docs[ri]) |doc_ptr| {
+              const result_term = extract_query_result_to_term(doc_ptr);
+              results_list = beam.make_list_cell(result_term, results_list, .{});
+          }
+      }
+
+      // Step 16: cleanup
+      zvec.zvec_docs_free(@ptrCast(result_docs), result_count);
+      zvec.zvec_vector_query_destroy(query);
+
+      return beam.make(.{ .ok, results_list }, .{});
   }
 
   // =========================================================================

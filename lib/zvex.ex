@@ -111,4 +111,9 @@ defmodule Zvex do
   defdelegate delete_by_filter!(collection, filter), to: Zvex.Collection
   defdelegate fetch(collection, primary_keys), to: Zvex.Collection
   defdelegate fetch!(collection, primary_keys), to: Zvex.Collection
+
+  # -- Query -----------------------------------------------------------------
+
+  defdelegate execute(query, collection), to: Zvex.Query
+  defdelegate execute!(query, collection), to: Zvex.Query
 end
