@@ -1,13 +1,20 @@
 defmodule Zvex.Query.Result do
   @moduledoc """
-  Result returned by `Zvex.Query.execute/2`.
+  A single result returned by `Zvex.Query.execute/2`.
 
-  Fields are stored as `%{"field_name" => {type_atom, value}}` — the same
-  typed-tuple representation used by `Zvex.Document` internally.
+  ## Fields
+
+  - `:pk` — the primary key of the matched document, or `nil` if not available.
+  - `:score` — the distance/similarity score (interpretation depends on the metric).
+  - `:doc_id` — internal document identifier (only populated when
+    `Zvex.Query.include_doc_id/2` is `true`).
+  - `:fields` — requested output fields as `%{"name" => {type_atom, value}}`,
+    using the same typed-tuple format as `Zvex.Document`.
   """
 
   defstruct pk: nil, score: 0.0, doc_id: 0, fields: %{}
 
+  @typedoc "A single query result with score and optional field data."
   @type t :: %__MODULE__{
           pk: String.t() | nil,
           score: float(),

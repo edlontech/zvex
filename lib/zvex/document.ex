@@ -25,20 +25,31 @@ defmodule Zvex.Document do
 
   defstruct fields: %{}, pk: nil
 
+  @typedoc """
+  A typed document for insertion into a zvec collection.
+
+  - `:fields` — map of `"field_name" => {type_atom, value}` tuples preserving
+    type information through NIF boundaries.
+  - `:pk` — the primary key value (a string), or `nil` if not yet set.
+  """
   @type t :: %__MODULE__{
           fields: %{String.t() => {atom(), term()}},
           pk: String.t() | nil
         }
 
+  @doc "Creates an empty document with no fields and no primary key."
   @spec new() :: t()
   def new, do: %__MODULE__{}
 
+  @doc "Returns the list of field names present in the document."
   @spec fields(t()) :: [String.t()]
   def fields(%__MODULE__{fields: fields}), do: Map.keys(fields)
 
+  @doc "Returns `true` if the document contains a field named `field`."
   @spec has_field?(t(), String.t()) :: boolean()
   def has_field?(%__MODULE__{fields: fields}, field), do: Map.has_key?(fields, field)
 
+  @doc "Returns `true` if the field exists and its value is `nil`."
   @spec field_null?(t(), String.t()) :: boolean()
   def field_null?(%__MODULE__{fields: fields}, field) do
     case Map.get(fields, field) do
@@ -47,25 +58,45 @@ defmodule Zvex.Document do
     end
   end
 
+  @doc "Returns `true` if the document has no fields and no primary key set."
   @spec empty?(t()) :: boolean()
   def empty?(%__MODULE__{fields: fields, pk: pk}) do
     map_size(fields) == 0 and is_nil(pk)
   end
 
+  @doc "Removes a field from the document by name. No-op if the field does not exist."
   @spec remove_field(t(), String.t()) :: t()
   def remove_field(%__MODULE__{} = doc, field) do
     %{doc | fields: Map.delete(doc.fields, field)}
   end
 
+  @doc """
+  Merges two documents. Fields from `doc2` overwrite those in `doc1`.
+  The primary key is taken from `doc2` if set, otherwise from `doc1`.
+  """
   @spec merge(t(), t()) :: t()
   def merge(%__MODULE__{} = doc1, %__MODULE__{} = doc2) do
     pk = if doc2.pk, do: doc2.pk, else: doc1.pk
     %__MODULE__{pk: pk, fields: Map.merge(doc1.fields, doc2.fields)}
   end
 
+  @doc "Returns a new empty document, discarding all fields and the primary key."
   @spec clear(t()) :: t()
   def clear(%__MODULE__{}), do: %__MODULE__{}
 
+  @doc """
+  Sets a field value on the document.
+
+  The type is inferred automatically from the value:
+
+  - `Zvex.Vector` — uses the vector's type
+  - `boolean` — `:bool`
+  - `binary/string` — `:string`
+  - `integer` — `:int64`
+  - `float` — `:double`
+
+  Use the 4-arity `put/4` to specify an explicit type atom.
+  """
   @spec put(t(), String.t(), term()) :: t()
   def put(%__MODULE__{} = doc, field, %Vector{type: type, data: data}) do
     %{doc | fields: Map.put(doc.fields, field, {type, data})}
@@ -91,21 +122,32 @@ defmodule Zvex.Document do
     raise ArgumentError, "unsupported type for value: #{inspect(value)}"
   end
 
+  @doc "Sets a field with an explicit `type` atom, bypassing automatic type inference."
   @spec put(t(), String.t(), term(), atom()) :: t()
   def put(%__MODULE__{} = doc, field, value, type) when is_atom(type) do
     %{doc | fields: Map.put(doc.fields, field, {type, value})}
   end
 
+  @doc "Sets a field to null (type `:null`, value `nil`)."
   @spec put_null(t(), String.t()) :: t()
   def put_null(%__MODULE__{} = doc, field) do
     %{doc | fields: Map.put(doc.fields, field, {:null, nil})}
   end
 
+  @doc "Sets the primary key for this document. Must be a string."
   @spec put_pk(t(), String.t()) :: t()
   def put_pk(%__MODULE__{} = doc, pk) when is_binary(pk) do
     %{doc | pk: pk}
   end
 
+  @doc """
+  Builds a document from a plain map using the schema for type resolution.
+
+  Keys in `map` that don't match a schema field are silently ignored.
+  The primary key field is used to set both the `:pk` and the field entry.
+  Vector values can be given as plain lists — they are automatically packed
+  into the schema's vector type.
+  """
   @spec from_map(map(), Schema.t()) :: t()
   def from_map(map, %Schema{} = schema) when is_map(map) do
     field_defs = Map.new(schema.fields, fn f -> {f.name, f} end)
@@ -118,11 +160,18 @@ defmodule Zvex.Document do
     end)
   end
 
+  @doc "Converts the document to a plain map, stripping type information from field values."
   @spec to_map(t()) :: map()
   def to_map(%__MODULE__{fields: fields}) do
     Map.new(fields, fn {key, {_type, value}} -> {key, value} end)
   end
 
+  @doc """
+  Validates the document against a schema.
+
+  Checks that the primary key is set (if required), all non-nullable fields
+  are present, field types match, and vector dimensions are correct.
+  """
   @spec validate(t(), Schema.t()) :: :ok | {:error, Zvex.Error.t()}
   def validate(%__MODULE__{} = doc, %Schema{} = schema) do
     with :ok <- validate_pk(doc, schema),
@@ -132,6 +181,7 @@ defmodule Zvex.Document do
     end
   end
 
+  @doc "Converts the document to the internal map format expected by the NIF layer."
   @spec to_native_map(t()) :: map()
   def to_native_map(%__MODULE__{} = doc) do
     fields =
@@ -142,6 +192,7 @@ defmodule Zvex.Document do
     %{pk: doc.pk, fields: fields}
   end
 
+  @doc "Reconstructs a document from the internal NIF map format."
   @spec from_native_map(map()) :: t()
   def from_native_map(%{pk: pk, fields: fields}) do
     field_map =
@@ -152,20 +203,24 @@ defmodule Zvex.Document do
     %__MODULE__{pk: pk, fields: field_map}
   end
 
+  @doc "Converts one or more documents to a list of NIF-ready maps."
   @spec to_native_maps(t() | [t()]) :: [map()]
   def to_native_maps(%__MODULE__{} = doc), do: [to_native_map(doc)]
   def to_native_maps(docs) when is_list(docs), do: Enum.map(docs, &to_native_map/1)
 
   # -- Serialization ----------------------------------------------------------
 
+  @doc "Serializes the document to a compact binary representation via the native layer."
   @spec serialize(t()) :: {:ok, binary()} | {:error, Zvex.Error.t()}
   def serialize(%__MODULE__{} = doc) do
     doc |> to_native_map() |> Zvex.Native.doc_serialize() |> Zvex.Error.from_native()
   end
 
+  @doc "Like `serialize/1` but raises on error."
   @spec serialize!(t()) :: binary()
   def serialize!(doc), do: serialize(doc) |> Zvex.Error.unwrap!()
 
+  @doc "Deserializes a binary produced by `serialize/1` back into a document."
   @spec deserialize(binary()) :: {:ok, t()} | {:error, Zvex.Error.t()}
   def deserialize(binary) when is_binary(binary) do
     case Zvex.Native.doc_deserialize(binary) |> Zvex.Error.from_native() do
@@ -174,22 +229,27 @@ defmodule Zvex.Document do
     end
   end
 
+  @doc "Like `deserialize/1` but raises on error."
   @spec deserialize!(binary()) :: t()
   def deserialize!(binary), do: deserialize(binary) |> Zvex.Error.unwrap!()
 
+  @doc "Returns the estimated memory usage of the document in bytes."
   @spec memory_usage(t()) :: {:ok, non_neg_integer()} | {:error, Zvex.Error.t()}
   def memory_usage(%__MODULE__{} = doc) do
     doc |> to_native_map() |> Zvex.Native.doc_memory_usage() |> Zvex.Error.from_native()
   end
 
+  @doc "Like `memory_usage/1` but raises on error."
   @spec memory_usage!(t()) :: non_neg_integer()
   def memory_usage!(doc), do: memory_usage(doc) |> Zvex.Error.unwrap!()
 
+  @doc "Returns a human-readable string describing the document's fields and types."
   @spec detail_string(t()) :: {:ok, String.t()} | {:error, Zvex.Error.t()}
   def detail_string(%__MODULE__{} = doc) do
     doc |> to_native_map() |> Zvex.Native.doc_detail_string() |> Zvex.Error.from_native()
   end
 
+  @doc "Like `detail_string/1` but raises on error."
   @spec detail_string!(t()) :: String.t()
   def detail_string!(doc), do: detail_string(doc) |> Zvex.Error.unwrap!()
 

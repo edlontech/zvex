@@ -1,6 +1,70 @@
 defmodule Zvex do
   @moduledoc """
-  Elixir bindings for zvec, an in-process vector database.
+  Elixir bindings for **zvec**, an in-process vector database.
+
+  Zvex provides a high-level API for creating and managing vector collections,
+  inserting typed documents, and performing similarity search queries. All
+  heavy operations are backed by NIF calls to the zvec C library.
+
+  This module acts as a convenience facade that delegates to the underlying
+  modules. You can use it directly or reach for the individual modules when
+  you need finer control:
+
+  | Module | Purpose |
+  |---|---|
+  | `Zvex.Collection` | Collection lifecycle and CRUD |
+  | `Zvex.Collection.Schema` | Schema builder |
+  | `Zvex.Document` | Typed document construction |
+  | `Zvex.Query` | Fluent vector query builder |
+  | `Zvex.Vector` | Vector packing/unpacking |
+  | `Zvex.Config` | Library configuration |
+
+  ## Quick Start
+
+      # Initialize the library
+      :ok = Zvex.initialize()
+
+      # Define a schema
+      schema =
+        Zvex.Collection.Schema.new("products")
+        |> Zvex.Collection.Schema.add_field("id", :string, primary_key: true)
+        |> Zvex.Collection.Schema.add_field("embedding", :vector_fp32,
+             dimension: 128,
+             index: [type: :hnsw, metric: :cosine])
+        |> Zvex.Collection.Schema.add_field("name", :string)
+
+      # Create a collection and insert a document
+      {:ok, coll} = Zvex.create("/tmp/products", schema)
+
+      doc =
+        Zvex.Document.new()
+        |> Zvex.Document.put_pk("prod-1")
+        |> Zvex.Document.put("name", "Widget")
+        |> Zvex.Document.put("embedding", Zvex.Vector.from_list(List.duplicate(0.1, 128), :fp32))
+
+      {:ok, _} = Zvex.insert(coll, doc)
+
+      # Query nearest neighbors
+      query_vec = Zvex.Vector.from_list(List.duplicate(0.1, 128), :fp32)
+
+      {:ok, results} =
+        Zvex.Query.new()
+        |> Zvex.Query.field("embedding")
+        |> Zvex.Query.vector(query_vec)
+        |> Zvex.Query.top_k(5)
+        |> Zvex.Query.execute(coll)
+
+      :ok = Zvex.close(coll)
+      :ok = Zvex.shutdown()
+
+  ## Error Handling
+
+  Every fallible function comes in two flavours:
+
+  - `fun/n` returns `{:ok, result}` or `{:error, %Zvex.Error{}}`.
+  - `fun!/n` returns the unwrapped result or raises.
+
+  See `Zvex.Error` for the full error hierarchy.
   """
 
   @doc """
@@ -80,15 +144,19 @@ defmodule Zvex do
 
   # -- Collection lifecycle --------------------------------------------------
 
+  @doc "Creates a new collection at `path` with the given `schema`. See `Zvex.Collection.create/3`."
   def create(path, schema), do: Zvex.Collection.create(path, schema)
   defdelegate create(path, schema, opts), to: Zvex.Collection
 
+  @doc "Like `create/2` but raises on error. See `Zvex.Collection.create!/3`."
   def create!(path, schema), do: Zvex.Collection.create!(path, schema)
   defdelegate create!(path, schema, opts), to: Zvex.Collection
 
+  @doc "Opens an existing collection from `path`. See `Zvex.Collection.open/2`."
   def open(path), do: Zvex.Collection.open(path)
   defdelegate open(path, opts), to: Zvex.Collection
 
+  @doc "Like `open/1` but raises on error. See `Zvex.Collection.open!/2`."
   def open!(path), do: Zvex.Collection.open!(path)
   defdelegate open!(path, opts), to: Zvex.Collection
 
@@ -115,9 +183,11 @@ defmodule Zvex do
   defdelegate has_field?(collection, field_name), to: Zvex.Collection
   defdelegate has_index?(collection, field_name), to: Zvex.Collection
 
+  @doc "Lists field names in the collection. See `Zvex.Collection.field_names/2`."
   def field_names(collection), do: Zvex.Collection.field_names(collection)
   defdelegate field_names(collection, category), to: Zvex.Collection
 
+  @doc "Like `field_names/1` but raises on error. See `Zvex.Collection.field_names!/2`."
   def field_names!(collection), do: Zvex.Collection.field_names!(collection)
   defdelegate field_names!(collection, category), to: Zvex.Collection
 
@@ -130,11 +200,13 @@ defmodule Zvex do
 
   # -- Column management (DDL) -----------------------------------------------
 
+  @doc "Adds a new column to the collection. See `Zvex.Collection.add_column/4`."
   def add_column(collection, name, data_type),
     do: Zvex.Collection.add_column(collection, name, data_type)
 
   defdelegate add_column(collection, name, data_type, opts), to: Zvex.Collection
 
+  @doc "Like `add_column/3` but raises on error. See `Zvex.Collection.add_column!/4`."
   def add_column!(collection, name, data_type),
     do: Zvex.Collection.add_column!(collection, name, data_type)
 

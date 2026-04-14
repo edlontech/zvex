@@ -2,8 +2,19 @@ defmodule Zvex.Error do
   @moduledoc """
   Splode error hierarchy for Zvex.
 
-  Maps zvec C error codes to structured Elixir errors organized
-  into classes: invalid, not_found, conflict, unavailable, internal, unknown.
+  Maps zvec C error codes to structured Elixir errors. Every error is a
+  standard Elixir exception and belongs to one of six classes:
+
+  | Class | Errors | Meaning |
+  |---|---|---|
+  | `:invalid` | `Argument`, `FailedPrecondition` | Bad input or unmet precondition |
+  | `:not_found` | `NotFound` | Requested resource does not exist |
+  | `:conflict` | `AlreadyExists` | Resource already exists |
+  | `:unavailable` | `PermissionDenied`, `ResourceExhausted`, `Unavailable`, `NotSupported` | Temporary or permanent inability to perform the operation |
+  | `:internal` | `InternalError` | Unexpected error in the native layer |
+  | `:unknown` | `Unknown` | Unclassified error |
+
+  All errors carry a human-readable `:message` field.
   """
   use Splode,
     error_classes: [

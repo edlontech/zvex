@@ -34,6 +34,7 @@ defmodule Zvex.Vector do
           data: binary()
         }
 
+  @typedoc "Full vector type atom as stored in the struct and in document fields."
   @type type ::
           :vector_fp16
           | :vector_fp32
@@ -46,6 +47,12 @@ defmodule Zvex.Vector do
           | :sparse_vector_fp16
           | :sparse_vector_fp32
 
+  @typedoc """
+  Shorthand alias used in `from_list/2`, `from_binary/2`, and `from_sparse/3`.
+
+  Each shorthand maps to a full type (e.g. `:fp32` -> `:vector_fp32`,
+  `:sparse_fp32` -> `:sparse_vector_fp32`).
+  """
   @type shorthand ::
           :fp16
           | :fp32
@@ -74,6 +81,18 @@ defmodule Zvex.Vector do
   @sparse_types [:sparse_vector_fp16, :sparse_vector_fp32]
   @dense_shorthands Map.drop(@shorthands, [:sparse_fp16, :sparse_fp32])
 
+  @doc """
+  Packs a list of numbers into a dense vector binary.
+
+  The `type` is a shorthand atom (e.g. `:fp32`, `:int8`). Sparse shorthands
+  are not accepted — use `from_sparse/3` instead.
+
+  ## Examples
+
+      iex> vec = Zvex.Vector.from_list([1.0, 2.0, 3.0], :fp32)
+      iex> Zvex.Vector.dimension(vec)
+      3
+  """
   @spec from_list([number()], shorthand()) :: t()
   def from_list(list, type) when is_list(list) and is_map_key(@dense_shorthands, type) do
     full_type = Map.fetch!(@dense_shorthands, type)
@@ -81,6 +100,12 @@ defmodule Zvex.Vector do
     %__MODULE__{type: full_type, data: data}
   end
 
+  @doc """
+  Wraps a pre-packed binary as a dense vector of the given `type`.
+
+  No validation is performed on the binary contents — it is assumed to
+  already be in the correct native-endian format for the given type.
+  """
   @spec from_binary(binary(), shorthand()) :: t()
   def from_binary(binary, type) when is_binary(binary) and is_map_key(@dense_shorthands, type) do
     full_type = Map.fetch!(@dense_shorthands, type)
@@ -146,6 +171,13 @@ defmodule Zvex.Vector do
     raise ArgumentError, "expected a sparse vector, got #{inspect(type)}"
   end
 
+  @doc """
+  Unpacks a dense vector back to a list of numbers.
+
+  For fp16 vectors, special IEEE 754 values may appear as `:infinity`,
+  `:neg_infinity`, or `:nan`. Sparse vectors are not supported — use
+  `to_sparse/1` instead.
+  """
   @spec to_list(t()) :: [number() | :infinity | :neg_infinity | :nan]
   def to_list(%__MODULE__{type: type}) when type in @sparse_types do
     raise ArgumentError, "to_list/1 is not supported for sparse vectors, use to_sparse/1"
@@ -155,6 +187,12 @@ defmodule Zvex.Vector do
     unpack(data, to_shorthand(type))
   end
 
+  @doc """
+  Returns the number of elements (dimension) in a dense vector.
+
+  Returns `nil` for sparse vectors, since sparse vectors don't have a fixed
+  dimension. Use `nnz/1` to get the number of non-zero entries instead.
+  """
   @spec dimension(t()) :: non_neg_integer() | nil
   def dimension(%__MODULE__{type: type}) when type in @sparse_types, do: nil
 

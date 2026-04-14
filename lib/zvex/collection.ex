@@ -2,6 +2,14 @@ defmodule Zvex.Collection do
   @moduledoc """
   Collection lifecycle management for zvec.
 
+  A collection is the fundamental storage unit — it holds typed documents
+  organized by a `Zvex.Collection.Schema`. Once created and opened, you can
+  insert, update, upsert, delete, and fetch documents, as well as manage
+  indexes and columns at runtime.
+
+  Every function that can fail returns `{:ok, result} | {:error, Zvex.Error.t()}`
+  and has a bang (`!`) variant that unwraps or raises.
+
   ## Example
 
       alias Zvex.Collection
@@ -25,12 +33,27 @@ defmodule Zvex.Collection do
 
   defstruct [:ref, :path, closed: false]
 
+  @typedoc """
+  An open collection handle.
+
+  - `:ref` — opaque NIF resource reference to the underlying zvec collection.
+  - `:path` — filesystem path where the collection data is stored.
+  - `:closed` — whether `close/1` has been called on this handle.
+  """
   @type t :: %__MODULE__{
           ref: reference(),
           path: String.t(),
           closed: boolean()
         }
 
+  @doc """
+  Creates a new collection on disk and opens it.
+
+  The `schema` is validated before being sent to the native layer. `opts` are
+  forwarded as collection-level options (e.g. segment configuration).
+
+  Returns `{:ok, collection}` on success.
+  """
   @spec create(String.t(), Schema.t(), keyword()) :: {:ok, t()} | {:error, Zvex.Error.t()}
   def create(path, %Schema{} = schema, opts \\ []) do
     with :ok <- Schema.validate(schema) do
@@ -44,12 +67,19 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `create/3` but raises on error."
   @spec create!(String.t(), Schema.t(), keyword()) :: t()
   def create!(path, schema, opts \\ []) do
     create(path, schema, opts)
     |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Opens an existing collection from `path`.
+
+  The collection must have been previously created with `create/3`. Accepts
+  the same `opts` as `create/3` for overriding collection-level options.
+  """
   @spec open(String.t(), keyword()) :: {:ok, t()} | {:error, Zvex.Error.t()}
   def open(path, opts \\ []) do
     opts_map = Map.new(opts)
@@ -60,12 +90,18 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `open/2` but raises on error."
   @spec open!(String.t(), keyword()) :: t()
   def open!(path, opts \\ []) do
     open(path, opts)
     |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Closes the collection, releasing its native resources.
+
+  After closing, all operations on this handle will return an error.
+  """
   @spec close(t()) :: :ok | {:error, Zvex.Error.t()}
   def close(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
@@ -74,12 +110,18 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `close/1` but raises on error."
   @spec close!(t()) :: :ok
   def close!(%__MODULE__{} = collection) do
     close(collection)
     |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Closes the collection (if open) and deletes its data directory from disk.
+
+  This is a destructive, irreversible operation.
+  """
   @spec drop(t()) :: :ok | {:error, Zvex.Error.t()}
   def drop(%__MODULE__{} = collection) do
     unless collection.closed do
@@ -90,12 +132,14 @@ defmodule Zvex.Collection do
     :ok
   end
 
+  @doc "Like `drop/1` but raises on error."
   @spec drop!(t()) :: :ok
   def drop!(%__MODULE__{} = collection) do
     drop(collection)
     |> Zvex.Error.unwrap!()
   end
 
+  @doc "Flushes buffered writes to persistent storage."
   @spec flush(t()) :: :ok | {:error, Zvex.Error.t()}
   def flush(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
@@ -104,12 +148,19 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `flush/1` but raises on error."
   @spec flush!(t()) :: :ok
   def flush!(%__MODULE__{} = collection) do
     flush(collection)
     |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Triggers index optimization on the collection.
+
+  This merges segments and rebuilds indexes for better query performance.
+  Can be a long-running operation on large collections.
+  """
   @spec optimize(t()) :: :ok | {:error, Zvex.Error.t()}
   def optimize(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
@@ -118,12 +169,14 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `optimize/1` but raises on error."
   @spec optimize!(t()) :: :ok
   def optimize!(%__MODULE__{} = collection) do
     optimize(collection)
     |> Zvex.Error.unwrap!()
   end
 
+  @doc "Returns a `Zvex.Collection.Stats` struct with the document count and index information."
   @spec stats(t()) :: {:ok, Stats.t()} | {:error, Zvex.Error.t()}
   def stats(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
@@ -141,12 +194,14 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `stats/1` but raises on error."
   @spec stats!(t()) :: Stats.t()
   def stats!(%__MODULE__{} = collection) do
     stats(collection)
     |> Zvex.Error.unwrap!()
   end
 
+  @doc "Returns the `Zvex.Collection.Schema` of the open collection."
   @spec schema(t()) :: {:ok, Schema.t()} | {:error, Zvex.Error.t()}
   def schema(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
@@ -157,6 +212,7 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `schema/1` but raises on error."
   @spec schema!(t()) :: Schema.t()
   def schema!(%__MODULE__{} = collection) do
     schema(collection)
@@ -165,6 +221,7 @@ defmodule Zvex.Collection do
 
   # -- Options introspection ---------------------------------------------------
 
+  @doc "Returns the collection-level options as a map."
   @spec options(t()) :: {:ok, map()} | {:error, Zvex.Error.t()}
   def options(%__MODULE__{} = collection) do
     with :ok <- check_open(collection) do
@@ -175,6 +232,7 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `options/1` but raises on error."
   @spec options!(t()) :: map()
   def options!(%__MODULE__{} = collection) do
     options(collection) |> Zvex.Error.unwrap!()
@@ -182,6 +240,7 @@ defmodule Zvex.Collection do
 
   # -- Schema introspection ---------------------------------------------------
 
+  @doc "Returns `true` if the collection schema contains a field named `field_name`."
   @spec has_field?(t(), String.t()) :: boolean()
   def has_field?(%__MODULE__{} = collection, field_name) when is_binary(field_name) do
     case Zvex.Native.collection_has_field(collection.ref, field_name) do
@@ -190,6 +249,7 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Returns `true` if the field `field_name` has an index."
   @spec has_index?(t(), String.t()) :: boolean()
   def has_index?(%__MODULE__{} = collection, field_name) when is_binary(field_name) do
     case Zvex.Native.collection_has_index(collection.ref, field_name) do
@@ -198,11 +258,21 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Returns the names of all fields. Shorthand for `field_names(collection, :all)`."
   @spec field_names(t()) :: {:ok, [String.t()]} | {:error, Zvex.Error.t()}
   def field_names(%__MODULE__{} = collection) do
     field_names(collection, :all)
   end
 
+  @doc """
+  Returns the names of fields matching `category`.
+
+  Categories:
+  - `:all` — every field in the schema
+  - `:forward` — scalar/forward-stored fields
+  - `:vector` — vector fields (dense and sparse)
+  - `:indexed` — fields that have an index
+  """
   @spec field_names(t(), :all | :forward | :vector | :indexed) ::
           {:ok, [String.t()]} | {:error, Zvex.Error.t()}
   def field_names(%__MODULE__{} = collection, category)
@@ -215,11 +285,13 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `field_names/1` but raises on error."
   @spec field_names!(t()) :: [String.t()]
   def field_names!(%__MODULE__{} = collection) do
     field_names(collection) |> Zvex.Error.unwrap!()
   end
 
+  @doc "Like `field_names/2` but raises on error."
   @spec field_names!(t(), :all | :forward | :vector | :indexed) :: [String.t()]
   def field_names!(%__MODULE__{} = collection, category) do
     field_names(collection, category) |> Zvex.Error.unwrap!()
@@ -227,6 +299,13 @@ defmodule Zvex.Collection do
 
   # -- Index management (DDL) -------------------------------------------------
 
+  @doc """
+  Creates an index on `field_name`.
+
+  `opts` are index-specific parameters (e.g. `type`, `metric`, `m`,
+  `ef_construction`). See `Zvex.Collection.Schema.IndexParams` for the
+  full list of supported options.
+  """
   @spec create_index(t(), String.t(), keyword()) :: :ok | {:error, Zvex.Error.t()}
   def create_index(%__MODULE__{} = collection, field_name, opts)
       when is_binary(field_name) and is_list(opts) do
@@ -240,11 +319,13 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `create_index/3` but raises on error."
   @spec create_index!(t(), String.t(), keyword()) :: :ok
   def create_index!(collection, field_name, opts) do
     create_index(collection, field_name, opts) |> Zvex.Error.unwrap!()
   end
 
+  @doc "Removes the index from `field_name`."
   @spec drop_index(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
   def drop_index(%__MODULE__{} = collection, field_name) when is_binary(field_name) do
     with :ok <- check_open(collection) do
@@ -255,6 +336,7 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `drop_index/2` but raises on error."
   @spec drop_index!(t(), String.t()) :: :ok
   def drop_index!(collection, field_name) do
     drop_index(collection, field_name) |> Zvex.Error.unwrap!()
@@ -262,6 +344,16 @@ defmodule Zvex.Collection do
 
   # -- Column management (DDL) ------------------------------------------------
 
+  @doc """
+  Adds a new column to the collection schema at runtime.
+
+  ## Options
+
+  - `:nullable` — whether the column allows null values (default `false`)
+  - `:dimension` — vector dimension, required for vector types (default `0`)
+  - `:index` — keyword list of index parameters (e.g. `[type: :invert]`)
+  - `:default` — default expression string applied to existing documents
+  """
   @spec add_column(t(), String.t(), atom(), keyword()) :: :ok | {:error, Zvex.Error.t()}
   def add_column(%__MODULE__{} = collection, name, data_type, opts \\ [])
       when is_binary(name) and is_atom(data_type) do
@@ -288,11 +380,13 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `add_column/4` but raises on error."
   @spec add_column!(t(), String.t(), atom(), keyword()) :: :ok
   def add_column!(collection, name, data_type, opts \\ []) do
     add_column(collection, name, data_type, opts) |> Zvex.Error.unwrap!()
   end
 
+  @doc "Removes a column from the collection schema. Existing data for this column is discarded."
   @spec drop_column(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
   def drop_column(%__MODULE__{} = collection, column_name) when is_binary(column_name) do
     with :ok <- check_open(collection) do
@@ -303,11 +397,21 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `drop_column/2` but raises on error."
   @spec drop_column!(t(), String.t()) :: :ok
   def drop_column!(collection, column_name) do
     drop_column(collection, column_name) |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Alters an existing column.
+
+  ## Options
+
+  - `:new_name` — rename the column
+  - `:schema` — keyword list with the new field definition (`:name`, `:data_type`,
+    `:nullable`, `:dimension`)
+  """
   @spec alter_column(t(), String.t(), keyword()) :: :ok | {:error, Zvex.Error.t()}
   def alter_column(%__MODULE__{} = collection, column_name, opts)
       when is_binary(column_name) and is_list(opts) do
@@ -335,6 +439,7 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `alter_column/3` but raises on error."
   @spec alter_column!(t(), String.t(), keyword()) :: :ok
   def alter_column!(collection, column_name, opts) do
     alter_column(collection, column_name, opts) |> Zvex.Error.unwrap!()
@@ -342,6 +447,13 @@ defmodule Zvex.Collection do
 
   # -- CRUD operations --------------------------------------------------------
 
+  @doc """
+  Inserts one or more documents into the collection.
+
+  Accepts a single `Zvex.Document` or a list. Returns a summary map with
+  `:success` and `:errors` counts. Documents whose primary key already exists
+  will be counted as errors.
+  """
   @spec insert(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
@@ -356,12 +468,19 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `insert/2` but raises on error."
   @spec insert!(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           %{success: non_neg_integer(), errors: non_neg_integer()}
   def insert!(collection, doc_or_docs) do
     insert(collection, doc_or_docs) |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Inserts documents and returns per-document result details.
+
+  Unlike `insert/2` which returns aggregate counts, this returns a list of
+  result maps — one per document — with individual status information.
+  """
   @spec insert_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def insert_with_results(%__MODULE__{} = collection, doc_or_docs) do
@@ -373,11 +492,19 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `insert_with_results/2` but raises on error."
   @spec insert_with_results!(t(), Zvex.Document.t() | [Zvex.Document.t()]) :: [map()]
   def insert_with_results!(collection, doc_or_docs) do
     insert_with_results(collection, doc_or_docs) |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Updates existing documents in the collection.
+
+  Documents are matched by primary key. Returns a summary with `:success`
+  and `:errors` counts. Documents whose primary key does not exist will be
+  counted as errors.
+  """
   @spec update(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
@@ -392,12 +519,14 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `update/2` but raises on error."
   @spec update!(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           %{success: non_neg_integer(), errors: non_neg_integer()}
   def update!(collection, doc_or_docs) do
     update(collection, doc_or_docs) |> Zvex.Error.unwrap!()
   end
 
+  @doc "Updates documents and returns per-document result details. See `insert_with_results/2`."
   @spec update_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def update_with_results(%__MODULE__{} = collection, doc_or_docs) do
@@ -409,11 +538,18 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `update_with_results/2` but raises on error."
   @spec update_with_results!(t(), Zvex.Document.t() | [Zvex.Document.t()]) :: [map()]
   def update_with_results!(collection, doc_or_docs) do
     update_with_results(collection, doc_or_docs) |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Inserts or updates documents, depending on whether their primary key exists.
+
+  Combines the semantics of `insert/2` and `update/2`. Returns a summary
+  with `:success` and `:errors` counts.
+  """
   @spec upsert(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
@@ -428,12 +564,14 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `upsert/2` but raises on error."
   @spec upsert!(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           %{success: non_neg_integer(), errors: non_neg_integer()}
   def upsert!(collection, doc_or_docs) do
     upsert(collection, doc_or_docs) |> Zvex.Error.unwrap!()
   end
 
+  @doc "Upserts documents and returns per-document result details. See `insert_with_results/2`."
   @spec upsert_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def upsert_with_results(%__MODULE__{} = collection, doc_or_docs) do
@@ -445,11 +583,17 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `upsert_with_results/2` but raises on error."
   @spec upsert_with_results!(t(), Zvex.Document.t() | [Zvex.Document.t()]) :: [map()]
   def upsert_with_results!(collection, doc_or_docs) do
     upsert_with_results(collection, doc_or_docs) |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Deletes documents by their primary keys.
+
+  Returns a summary with `:success` and `:errors` counts.
+  """
   @spec delete(t(), [String.t()]) ::
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
@@ -462,12 +606,14 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `delete/2` but raises on error."
   @spec delete!(t(), [String.t()]) ::
           %{success: non_neg_integer(), errors: non_neg_integer()}
   def delete!(collection, primary_keys) do
     delete(collection, primary_keys) |> Zvex.Error.unwrap!()
   end
 
+  @doc "Deletes documents and returns per-document result details. See `insert_with_results/2`."
   @spec delete_with_results(t(), [String.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def delete_with_results(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
@@ -477,11 +623,18 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `delete_with_results/2` but raises on error."
   @spec delete_with_results!(t(), [String.t()]) :: [map()]
   def delete_with_results!(collection, primary_keys) do
     delete_with_results(collection, primary_keys) |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Deletes all documents matching a filter expression.
+
+  The `filter` is a zvec filter expression string (same syntax as
+  `Zvex.Query.filter/2`).
+  """
   @spec delete_by_filter(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
   def delete_by_filter(%__MODULE__{} = collection, filter) when is_binary(filter) do
     with :ok <- check_open(collection) do
@@ -492,11 +645,18 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `delete_by_filter/2` but raises on error."
   @spec delete_by_filter!(t(), String.t()) :: :ok
   def delete_by_filter!(collection, filter) do
     delete_by_filter(collection, filter) |> Zvex.Error.unwrap!()
   end
 
+  @doc """
+  Fetches documents by their primary keys.
+
+  Returns a list of `Zvex.Document` structs in the same order as the requested
+  keys. Missing keys are silently skipped.
+  """
   @spec fetch(t(), [String.t()]) :: {:ok, [Zvex.Document.t()]} | {:error, Zvex.Error.t()}
   def fetch(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
     with :ok <- check_open(collection) do
@@ -507,6 +667,7 @@ defmodule Zvex.Collection do
     end
   end
 
+  @doc "Like `fetch/2` but raises on error."
   @spec fetch!(t(), [String.t()]) :: [Zvex.Document.t()]
   def fetch!(collection, primary_keys) do
     fetch(collection, primary_keys) |> Zvex.Error.unwrap!()

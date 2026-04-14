@@ -20,12 +20,29 @@ defmodule Zvex.Collection.Schema do
 
   defstruct [:name, fields: [], max_doc_count_per_segment: nil]
 
+  @typedoc """
+  A collection schema definition.
+
+  - `:name` — collection name, must be a non-empty string.
+  - `:fields` — ordered list of field definitions.
+  - `:max_doc_count_per_segment` — optional cap on documents per segment.
+  """
   @type t :: %__MODULE__{
           name: String.t(),
           fields: [field()],
           max_doc_count_per_segment: pos_integer() | nil
         }
 
+  @typedoc """
+  A single field definition within a schema.
+
+  - `:name` — field name (must be unique within the schema).
+  - `:data_type` — one of the atoms from `Zvex.Types.data_types/0`.
+  - `:primary_key` — exactly one field per schema must be `true` (must be `:string` type).
+  - `:nullable` — whether the field accepts null values.
+  - `:dimension` — required for vector types, must be `> 0`.
+  - `:index` — optional `Zvex.Collection.Schema.IndexParams` for the field.
+  """
   @type field :: %{
           name: String.t(),
           data_type: atom(),
@@ -48,9 +65,22 @@ defmodule Zvex.Collection.Schema do
   @vector_index_types ~w(hnsw ivf flat)a
   @scalar_index_types ~w(invert)a
 
+  @doc "Creates a new empty schema with the given collection `name`."
   @spec new(String.t()) :: t()
   def new(name) when is_binary(name), do: %__MODULE__{name: name}
 
+  @doc """
+  Appends a field to the schema.
+
+  ## Options
+
+  - `:primary_key` — marks this field as the primary key (default `false`).
+    Exactly one `:string` field must be the primary key.
+  - `:nullable` — allows null values (default `false`, forced `false` for primary keys).
+  - `:dimension` — vector dimension, required for vector data types (default `0`).
+  - `:index` — keyword list of index parameters forwarded to
+    `Zvex.Collection.Schema.IndexParams.from_opts/1`. Must include `:type`.
+  """
   @spec add_field(t(), String.t(), atom(), keyword()) :: t()
   def add_field(%__MODULE__{} = schema, name, data_type, opts \\ []) do
     primary_key = Keyword.get(opts, :primary_key, false)
@@ -75,10 +105,23 @@ defmodule Zvex.Collection.Schema do
     %{schema | fields: schema.fields ++ [field]}
   end
 
+  @doc "Sets the maximum number of documents per segment. Must be a positive integer."
   @spec max_doc_count_per_segment(t(), pos_integer()) :: t()
   def max_doc_count_per_segment(%__MODULE__{} = schema, count),
     do: %{schema | max_doc_count_per_segment: count}
 
+  @doc """
+  Validates the schema, checking:
+
+  - Name is a non-empty string
+  - At least one field is defined
+  - Exactly one `:string` primary key field
+  - All field names are unique
+  - All data types are recognized
+  - Vector fields have `dimension > 0`
+  - Index types are compatible with their field's data type
+  - `max_doc_count_per_segment` (if set) is a positive integer
+  """
   @spec validate(t()) :: :ok | {:error, Zvex.Error.t()}
   def validate(%__MODULE__{} = schema) do
     with :ok <- validate_name(schema.name),
