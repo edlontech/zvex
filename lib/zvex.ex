@@ -2,13 +2,9 @@ defmodule Zvex do
   @moduledoc """
   Elixir bindings for **zvec**, an in-process vector database.
 
-  Zvex provides a high-level API for creating and managing vector collections,
-  inserting typed documents, and performing similarity search queries. All
-  heavy operations are backed by NIF calls to the zvec C library.
-
-  This module acts as a convenience facade that delegates to the underlying
-  modules. You can use it directly or reach for the individual modules when
-  you need finer control:
+  This module manages the zvec library lifecycle: initialization,
+  shutdown, and version introspection. For collection operations, use
+  the dedicated modules:
 
   | Module | Purpose |
   |---|---|
@@ -21,40 +17,43 @@ defmodule Zvex do
 
   ## Quick Start
 
+      alias Zvex.{Collection, Document, Query, Vector}
+      alias Zvex.Collection.Schema
+
       # Initialize the library
       :ok = Zvex.initialize()
 
       # Define a schema
       schema =
-        Zvex.Collection.Schema.new("products")
-        |> Zvex.Collection.Schema.add_field("id", :string, primary_key: true)
-        |> Zvex.Collection.Schema.add_field("embedding", :vector_fp32,
+        Schema.new("products")
+        |> Schema.add_field("id", :string, primary_key: true)
+        |> Schema.add_field("embedding", :vector_fp32,
              dimension: 128,
              index: [type: :hnsw, metric: :cosine])
-        |> Zvex.Collection.Schema.add_field("name", :string)
+        |> Schema.add_field("name", :string)
 
       # Create a collection and insert a document
-      {:ok, coll} = Zvex.create("/tmp/products", schema)
+      {:ok, coll} = Collection.create("/tmp/products", schema)
 
       doc =
-        Zvex.Document.new()
-        |> Zvex.Document.put_pk("prod-1")
-        |> Zvex.Document.put("name", "Widget")
-        |> Zvex.Document.put("embedding", Zvex.Vector.from_list(List.duplicate(0.1, 128), :fp32))
+        Document.new()
+        |> Document.put_pk("prod-1")
+        |> Document.put("name", "Widget")
+        |> Document.put("embedding", Vector.from_list(List.duplicate(0.1, 128), :fp32))
 
-      {:ok, _} = Zvex.insert(coll, doc)
+      {:ok, _} = Collection.insert(coll, doc)
 
       # Query nearest neighbors
-      query_vec = Zvex.Vector.from_list(List.duplicate(0.1, 128), :fp32)
+      query_vec = Vector.from_list(List.duplicate(0.1, 128), :fp32)
 
       {:ok, results} =
-        Zvex.Query.new()
-        |> Zvex.Query.field("embedding")
-        |> Zvex.Query.vector(query_vec)
-        |> Zvex.Query.top_k(5)
-        |> Zvex.Query.execute(coll)
+        Query.new()
+        |> Query.field("embedding")
+        |> Query.vector(query_vec)
+        |> Query.top_k(5)
+        |> Query.execute(coll)
 
-      :ok = Zvex.close(coll)
+      :ok = Collection.close(coll)
       :ok = Zvex.shutdown()
 
   ## Error Handling
@@ -141,106 +140,4 @@ defmodule Zvex do
       when is_integer(major) and is_integer(minor) and is_integer(patch) do
     Zvex.Native.check_version(major, minor, patch)
   end
-
-  # -- Collection lifecycle --------------------------------------------------
-
-  @doc "Creates a new collection at `path` with the given `schema`. See `Zvex.Collection.create/3`."
-  def create(path, schema), do: Zvex.Collection.create(path, schema)
-  defdelegate create(path, schema, opts), to: Zvex.Collection
-
-  @doc "Like `create/2` but raises on error. See `Zvex.Collection.create!/3`."
-  def create!(path, schema), do: Zvex.Collection.create!(path, schema)
-  defdelegate create!(path, schema, opts), to: Zvex.Collection
-
-  @doc "Opens an existing collection from `path`. See `Zvex.Collection.open/2`."
-  def open(path), do: Zvex.Collection.open(path)
-  defdelegate open(path, opts), to: Zvex.Collection
-
-  @doc "Like `open/1` but raises on error. See `Zvex.Collection.open!/2`."
-  def open!(path), do: Zvex.Collection.open!(path)
-  defdelegate open!(path, opts), to: Zvex.Collection
-
-  defdelegate close(collection), to: Zvex.Collection
-  defdelegate close!(collection), to: Zvex.Collection
-  defdelegate drop(collection), to: Zvex.Collection
-  defdelegate drop!(collection), to: Zvex.Collection
-  defdelegate flush(collection), to: Zvex.Collection
-  defdelegate flush!(collection), to: Zvex.Collection
-  defdelegate optimize(collection), to: Zvex.Collection
-  defdelegate optimize!(collection), to: Zvex.Collection
-  defdelegate stats(collection), to: Zvex.Collection
-  defdelegate stats!(collection), to: Zvex.Collection
-  defdelegate schema(collection), to: Zvex.Collection
-  defdelegate schema!(collection), to: Zvex.Collection
-
-  # -- Options introspection -------------------------------------------------
-
-  defdelegate options(collection), to: Zvex.Collection
-  defdelegate options!(collection), to: Zvex.Collection
-
-  # -- Schema introspection -------------------------------------------------
-
-  defdelegate has_field?(collection, field_name), to: Zvex.Collection
-  defdelegate has_index?(collection, field_name), to: Zvex.Collection
-
-  @doc "Lists field names in the collection. See `Zvex.Collection.field_names/2`."
-  def field_names(collection), do: Zvex.Collection.field_names(collection)
-  defdelegate field_names(collection, category), to: Zvex.Collection
-
-  @doc "Like `field_names/1` but raises on error. See `Zvex.Collection.field_names!/2`."
-  def field_names!(collection), do: Zvex.Collection.field_names!(collection)
-  defdelegate field_names!(collection, category), to: Zvex.Collection
-
-  # -- Index management (DDL) ------------------------------------------------
-
-  defdelegate create_index(collection, field_name, opts), to: Zvex.Collection
-  defdelegate create_index!(collection, field_name, opts), to: Zvex.Collection
-  defdelegate drop_index(collection, field_name), to: Zvex.Collection
-  defdelegate drop_index!(collection, field_name), to: Zvex.Collection
-
-  # -- Column management (DDL) -----------------------------------------------
-
-  @doc "Adds a new column to the collection. See `Zvex.Collection.add_column/4`."
-  def add_column(collection, name, data_type),
-    do: Zvex.Collection.add_column(collection, name, data_type)
-
-  defdelegate add_column(collection, name, data_type, opts), to: Zvex.Collection
-
-  @doc "Like `add_column/3` but raises on error. See `Zvex.Collection.add_column!/4`."
-  def add_column!(collection, name, data_type),
-    do: Zvex.Collection.add_column!(collection, name, data_type)
-
-  defdelegate add_column!(collection, name, data_type, opts), to: Zvex.Collection
-  defdelegate drop_column(collection, column_name), to: Zvex.Collection
-  defdelegate drop_column!(collection, column_name), to: Zvex.Collection
-  defdelegate alter_column(collection, column_name, opts), to: Zvex.Collection
-  defdelegate alter_column!(collection, column_name, opts), to: Zvex.Collection
-
-  # -- CRUD ------------------------------------------------------------------
-
-  defdelegate insert(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate insert!(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate insert_with_results(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate insert_with_results!(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate update(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate update!(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate update_with_results(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate update_with_results!(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate upsert(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate upsert!(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate upsert_with_results(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate upsert_with_results!(collection, doc_or_docs), to: Zvex.Collection
-  defdelegate delete(collection, primary_keys), to: Zvex.Collection
-  defdelegate delete!(collection, primary_keys), to: Zvex.Collection
-  defdelegate delete_with_results(collection, primary_keys), to: Zvex.Collection
-  defdelegate delete_with_results!(collection, primary_keys), to: Zvex.Collection
-  defdelegate delete_by_filter(collection, filter), to: Zvex.Collection
-  defdelegate delete_by_filter!(collection, filter), to: Zvex.Collection
-  defdelegate fetch(collection, primary_keys), to: Zvex.Collection
-  defdelegate fetch!(collection, primary_keys), to: Zvex.Collection
-
-  # -- Query -----------------------------------------------------------------
-
-  defdelegate execute(query, collection), to: Zvex.Query
-  defdelegate execute!(query, collection), to: Zvex.Query
 end

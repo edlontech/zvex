@@ -52,7 +52,7 @@ defmodule Zvex.QueryIntegrationTest do
       build_doc("doc-4", [0.0, 0.0, 0.0, 1.0], "art")
     ]
 
-    assert {:ok, %{success: 4}} = Zvex.insert(coll, docs)
+    assert {:ok, %{success: 4}} = Collection.insert(coll, docs)
     assert :ok = Collection.flush(coll)
   end
 
@@ -219,7 +219,7 @@ defmodule Zvex.QueryIntegrationTest do
       assert is_list(results)
     end
 
-    test "Zvex.execute/2 delegates correctly", %{collection: coll} do
+    test "Query.execute/2 works correctly", %{collection: coll} do
       seed_and_flush(coll)
 
       q =
@@ -228,7 +228,7 @@ defmodule Zvex.QueryIntegrationTest do
         |> Query.vector([1.0, 0.0, 0.0, 0.0])
         |> Query.top_k(1)
 
-      assert {:ok, _results} = Zvex.execute(q, coll)
+      assert {:ok, _results} = Query.execute(q, coll)
     end
   end
 end

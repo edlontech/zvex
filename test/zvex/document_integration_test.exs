@@ -46,9 +46,9 @@ defmodule Zvex.DocumentIntegrationTest do
     test "single doc insert and fetch preserves pk and fields", %{collection: coll} do
       doc = build_doc("doc-1", [1.0, 2.0, 3.0, 4.0], "Hello")
 
-      assert {:ok, %{success: 1, errors: 0}} = Zvex.insert(coll, doc)
+      assert {:ok, %{success: 1, errors: 0}} = Collection.insert(coll, doc)
 
-      assert {:ok, [fetched]} = Zvex.fetch(coll, ["doc-1"])
+      assert {:ok, [fetched]} = Collection.fetch(coll, ["doc-1"])
       assert %Document{pk: "doc-1"} = fetched
       assert {"title", {:string, "Hello"}} in Enum.to_list(fetched.fields)
     end
@@ -63,10 +63,10 @@ defmodule Zvex.DocumentIntegrationTest do
           build_doc("batch-#{i}", [1.0, 2.0, 3.0, Float.parse("#{i}.0") |> elem(0)])
         end
 
-      assert {:ok, %{success: 5, errors: 0}} = Zvex.insert(coll, docs)
+      assert {:ok, %{success: 5, errors: 0}} = Collection.insert(coll, docs)
 
       pks = Enum.map(1..5, &"batch-#{&1}")
-      assert {:ok, fetched} = Zvex.fetch(coll, pks)
+      assert {:ok, fetched} = Collection.fetch(coll, pks)
       assert length(fetched) == 5
     end
   end
@@ -77,7 +77,7 @@ defmodule Zvex.DocumentIntegrationTest do
     test "returns per-doc result codes", %{collection: coll} do
       doc = build_doc("res-1", [1.0, 2.0, 3.0, 4.0])
 
-      assert {:ok, results} = Zvex.insert_with_results(coll, doc)
+      assert {:ok, results} = Collection.insert_with_results(coll, doc)
       assert is_list(results)
       assert [%{code: :ok}] = results
     end
@@ -88,12 +88,12 @@ defmodule Zvex.DocumentIntegrationTest do
 
     test "updates title and fetch reflects change", %{collection: coll} do
       doc = build_doc("upd-1", [1.0, 2.0, 3.0, 4.0], "Original")
-      {:ok, _} = Zvex.insert(coll, doc)
+      {:ok, _} = Collection.insert(coll, doc)
 
       updated = build_doc("upd-1", [1.0, 2.0, 3.0, 4.0], "Updated")
-      assert {:ok, %{success: 1, errors: 0}} = Zvex.update(coll, updated)
+      assert {:ok, %{success: 1, errors: 0}} = Collection.update(coll, updated)
 
-      assert {:ok, [fetched]} = Zvex.fetch(coll, ["upd-1"])
+      assert {:ok, [fetched]} = Collection.fetch(coll, ["upd-1"])
       assert {"title", {:string, "Updated"}} in Enum.to_list(fetched.fields)
     end
   end
@@ -103,13 +103,13 @@ defmodule Zvex.DocumentIntegrationTest do
 
     test "inserts new and updates existing", %{collection: coll} do
       doc1 = build_doc("ups-1", [1.0, 2.0, 3.0, 4.0], "First")
-      {:ok, _} = Zvex.insert(coll, doc1)
+      {:ok, _} = Collection.insert(coll, doc1)
 
       updated1 = build_doc("ups-1", [1.0, 2.0, 3.0, 4.0], "FirstUpdated")
       new2 = build_doc("ups-2", [5.0, 6.0, 7.0, 8.0], "Second")
-      assert {:ok, %{success: 2, errors: 0}} = Zvex.upsert(coll, [updated1, new2])
+      assert {:ok, %{success: 2, errors: 0}} = Collection.upsert(coll, [updated1, new2])
 
-      assert {:ok, fetched} = Zvex.fetch(coll, ["ups-1", "ups-2"])
+      assert {:ok, fetched} = Collection.fetch(coll, ["ups-1", "ups-2"])
       assert length(fetched) == 2
 
       ups1 = Enum.find(fetched, &(&1.pk == "ups-1"))
@@ -122,11 +122,11 @@ defmodule Zvex.DocumentIntegrationTest do
 
     test "deletes a doc and fetch returns empty", %{collection: coll} do
       doc = build_doc("del-1", [1.0, 2.0, 3.0, 4.0])
-      {:ok, _} = Zvex.insert(coll, doc)
+      {:ok, _} = Collection.insert(coll, doc)
 
-      assert {:ok, %{success: 1, errors: 0}} = Zvex.delete(coll, ["del-1"])
+      assert {:ok, %{success: 1, errors: 0}} = Collection.delete(coll, ["del-1"])
 
-      assert {:ok, []} = Zvex.fetch(coll, ["del-1"])
+      assert {:ok, []} = Collection.fetch(coll, ["del-1"])
     end
   end
 
@@ -135,9 +135,9 @@ defmodule Zvex.DocumentIntegrationTest do
 
     test "returns per-pk result list", %{collection: coll} do
       doc = build_doc("delr-1", [1.0, 2.0, 3.0, 4.0])
-      {:ok, _} = Zvex.insert(coll, doc)
+      {:ok, _} = Collection.insert(coll, doc)
 
-      assert {:ok, results} = Zvex.delete_with_results(coll, ["delr-1"])
+      assert {:ok, results} = Collection.delete_with_results(coll, ["delr-1"])
       assert is_list(results)
       assert [%{code: :ok}] = results
     end
@@ -149,11 +149,11 @@ defmodule Zvex.DocumentIntegrationTest do
     test "deletes docs matching filter", %{collection: coll} do
       doc1 = build_doc("filt-1", [1.0, 2.0, 3.0, 4.0], "keep")
       doc2 = build_doc("filt-2", [5.0, 6.0, 7.0, 8.0], "remove")
-      {:ok, _} = Zvex.insert(coll, [doc1, doc2])
+      {:ok, _} = Collection.insert(coll, [doc1, doc2])
 
-      assert :ok = Zvex.delete_by_filter(coll, "title = 'remove'")
+      assert :ok = Collection.delete_by_filter(coll, "title = 'remove'")
 
-      assert {:ok, remaining} = Zvex.fetch(coll, ["filt-1", "filt-2"])
+      assert {:ok, remaining} = Collection.fetch(coll, ["filt-1", "filt-2"])
       remaining_pks = Enum.map(remaining, & &1.pk)
       assert "filt-1" in remaining_pks
       refute "filt-2" in remaining_pks
@@ -164,7 +164,7 @@ defmodule Zvex.DocumentIntegrationTest do
     setup [:create_collection]
 
     test "returns empty list", %{collection: coll} do
-      assert {:ok, []} = Zvex.fetch(coll, ["nonexistent"])
+      assert {:ok, []} = Collection.fetch(coll, ["nonexistent"])
     end
   end
 
@@ -176,7 +176,7 @@ defmodule Zvex.DocumentIntegrationTest do
       coll = %{coll | closed: true}
 
       doc = build_doc("err-1", [1.0, 2.0, 3.0, 4.0])
-      assert {:error, %Zvex.Error.Invalid.Argument{}} = Zvex.insert(coll, doc)
+      assert {:error, %Zvex.Error.Invalid.Argument{}} = Collection.insert(coll, doc)
     end
   end
 
@@ -185,46 +185,46 @@ defmodule Zvex.DocumentIntegrationTest do
 
     test "insert! returns result map directly", %{collection: coll} do
       doc = build_doc("bang-1", [1.0, 2.0, 3.0, 4.0])
-      assert %{success: 1, errors: 0} = Zvex.insert!(coll, doc)
+      assert %{success: 1, errors: 0} = Collection.insert!(coll, doc)
     end
 
     test "fetch! returns docs directly", %{collection: coll} do
       doc = build_doc("bang-2", [1.0, 2.0, 3.0, 4.0], "BangTest")
-      Zvex.insert!(coll, doc)
+      Collection.insert!(coll, doc)
 
-      assert [%Document{pk: "bang-2"}] = Zvex.fetch!(coll, ["bang-2"])
+      assert [%Document{pk: "bang-2"}] = Collection.fetch!(coll, ["bang-2"])
     end
 
     test "insert_with_results! returns results directly", %{collection: coll} do
       doc = build_doc("bangr-1", [1.0, 2.0, 3.0, 4.0])
-      assert [%{code: :ok}] = Zvex.insert_with_results!(coll, doc)
+      assert [%{code: :ok}] = Collection.insert_with_results!(coll, doc)
     end
 
     test "update! returns result map directly", %{collection: coll} do
       doc = build_doc("bangu-1", [1.0, 2.0, 3.0, 4.0])
-      Zvex.insert!(coll, doc)
+      Collection.insert!(coll, doc)
 
       updated = build_doc("bangu-1", [1.0, 2.0, 3.0, 4.0], "Updated")
-      assert %{success: 1, errors: 0} = Zvex.update!(coll, updated)
+      assert %{success: 1, errors: 0} = Collection.update!(coll, updated)
     end
 
     test "upsert! returns result map directly", %{collection: coll} do
       doc = build_doc("bangups-1", [1.0, 2.0, 3.0, 4.0])
-      assert %{success: 1, errors: 0} = Zvex.upsert!(coll, doc)
+      assert %{success: 1, errors: 0} = Collection.upsert!(coll, doc)
     end
 
     test "delete! returns result map directly", %{collection: coll} do
       doc = build_doc("bangd-1", [1.0, 2.0, 3.0, 4.0])
-      Zvex.insert!(coll, doc)
+      Collection.insert!(coll, doc)
 
-      assert %{success: 1, errors: 0} = Zvex.delete!(coll, ["bangd-1"])
+      assert %{success: 1, errors: 0} = Collection.delete!(coll, ["bangd-1"])
     end
 
     test "delete_by_filter! returns :ok", %{collection: coll} do
       doc = build_doc("bangf-1", [1.0, 2.0, 3.0, 4.0], "test")
-      Zvex.insert!(coll, doc)
+      Collection.insert!(coll, doc)
 
-      assert :ok = Zvex.delete_by_filter!(coll, "title = 'test'")
+      assert :ok = Collection.delete_by_filter!(coll, "title = 'test'")
     end
   end
 
@@ -283,9 +283,9 @@ defmodule Zvex.DocumentIntegrationTest do
         |> Document.put("id", "sparse-1")
         |> Document.put("sparse_emb", sparse_vec)
 
-      assert {:ok, %{success: 1, errors: 0}} = Zvex.insert(coll, doc)
+      assert {:ok, %{success: 1, errors: 0}} = Collection.insert(coll, doc)
 
-      assert {:ok, [fetched]} = Zvex.fetch(coll, ["sparse-1"])
+      assert {:ok, [fetched]} = Collection.fetch(coll, ["sparse-1"])
       assert %Document{pk: "sparse-1"} = fetched
 
       assert {"sparse_emb", {:sparse_vector_fp32, fetched_data}} =
@@ -316,9 +316,9 @@ defmodule Zvex.DocumentIntegrationTest do
         |> Document.put("id", "sparse16-1")
         |> Document.put("sparse_emb", sparse_vec)
 
-      assert {:ok, %{success: 1, errors: 0}} = Zvex.insert(coll, doc)
+      assert {:ok, %{success: 1, errors: 0}} = Collection.insert(coll, doc)
 
-      assert {:ok, [fetched]} = Zvex.fetch(coll, ["sparse16-1"])
+      assert {:ok, [fetched]} = Collection.fetch(coll, ["sparse16-1"])
       assert %Document{pk: "sparse16-1"} = fetched
 
       assert {"sparse_emb", {:sparse_vector_fp16, fetched_data}} =
@@ -349,9 +349,9 @@ defmodule Zvex.DocumentIntegrationTest do
         |> Document.put("dense_emb", dense_vec)
         |> Document.put("sparse_emb", sparse_vec)
 
-      assert {:ok, %{success: 1, errors: 0}} = Zvex.insert(coll, doc)
+      assert {:ok, %{success: 1, errors: 0}} = Collection.insert(coll, doc)
 
-      assert {:ok, [fetched]} = Zvex.fetch(coll, ["mixed-1"])
+      assert {:ok, [fetched]} = Collection.fetch(coll, ["mixed-1"])
       assert %Document{pk: "mixed-1"} = fetched
 
       assert {"dense_emb", {:vector_fp32, _dense_data}} =
