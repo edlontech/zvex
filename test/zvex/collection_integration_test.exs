@@ -306,6 +306,110 @@ defmodule Zvex.CollectionIntegrationTest do
     end
   end
 
+  defp schema_with_numeric_column do
+    Schema.new("numeric_collection")
+    |> Schema.add_field("id", :string, primary_key: true)
+    |> Schema.add_field("embedding", :vector_fp32, dimension: 4)
+    |> Schema.add_field("score", :double, nullable: true)
+  end
+
+  describe "add_column/4" do
+    test "adds a nullable numeric column", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert :ok = Collection.add_column(coll, "score", :double, nullable: true)
+
+      {:ok, schema} = Collection.schema(coll)
+      score = Enum.find(schema.fields, &(&1.name == "score"))
+      assert score.data_type == :double
+      assert score.nullable == true
+    end
+
+    test "adds a column with default expression", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert :ok = Collection.add_column(coll, "count", :int32, nullable: true, default: "0")
+
+      {:ok, schema} = Collection.schema(coll)
+      count = Enum.find(schema.fields, &(&1.name == "count"))
+      assert count.data_type == :int32
+    end
+
+    test "add_column! returns :ok", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert :ok = Collection.add_column!(coll, "weight", :float, nullable: true)
+    end
+
+    test "returns error on closed collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      Zvex.Native.collection_close(coll.ref)
+
+      assert {:error, _} = Collection.add_column(coll, "score", :double, nullable: true)
+    end
+  end
+
+  describe "drop_column/2" do
+    test "drops an existing numeric column", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, schema_with_numeric_column())
+
+      assert :ok = Collection.drop_column(coll, "score")
+
+      {:ok, schema} = Collection.schema(coll)
+      field_names = Enum.map(schema.fields, & &1.name)
+      refute "score" in field_names
+    end
+
+    test "drop_column! returns :ok", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, schema_with_numeric_column())
+
+      assert :ok = Collection.drop_column!(coll, "score")
+    end
+
+    test "returns error on closed collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      Zvex.Native.collection_close(coll.ref)
+
+      assert {:error, _} = Collection.drop_column(coll, "score")
+    end
+  end
+
+  describe "alter_column/3" do
+    test "renames a numeric column", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, schema_with_numeric_column())
+
+      assert :ok = Collection.alter_column(coll, "score", new_name: "rating")
+
+      {:ok, schema} = Collection.schema(coll)
+      field_names = Enum.map(schema.fields, & &1.name)
+      assert "rating" in field_names
+      refute "score" in field_names
+    end
+
+    test "alter_column! returns :ok", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, schema_with_numeric_column())
+
+      assert :ok = Collection.alter_column!(coll, "score", new_name: "renamed_score")
+    end
+
+    test "returns error on closed collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      Zvex.Native.collection_close(coll.ref)
+
+      assert {:error, _} = Collection.alter_column(coll, "score", new_name: "rating")
+    end
+  end
+
   describe "drop/1" do
     test "removes the collection directory", %{test_dir: test_dir} do
       path = collection_path(test_dir)

@@ -28,6 +28,9 @@ defmodule Zvex.Native do
       collection_fetch: [:dirty_cpu],
       collection_create_index: [:dirty_cpu],
       collection_drop_index: [:dirty_cpu],
+      collection_add_column: [:dirty_cpu],
+      collection_drop_column: [:dirty_cpu],
+      collection_alter_column: [:dirty_cpu],
       collection_query: [:dirty_cpu],
       doc_serialize: [:dirty_cpu],
       doc_deserialize: [:dirty_cpu]
@@ -119,6 +122,9 @@ defmodule Zvex.Native do
   pub const collection_fetch = coll.collection_fetch;
   pub const collection_create_index = coll.collection_create_index;
   pub const collection_drop_index = coll.collection_drop_index;
+  pub const collection_add_column = coll.collection_add_column;
+  pub const collection_drop_column = coll.collection_drop_column;
+  pub const collection_alter_column = coll.collection_alter_column;
   pub const collection_query = query_mod.collection_query;
   pub const doc_serialize = document.doc_serialize;
   pub const doc_deserialize = document.doc_deserialize;

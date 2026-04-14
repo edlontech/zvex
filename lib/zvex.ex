@@ -96,6 +96,22 @@ defmodule Zvex do
   defdelegate drop_index(collection, field_name), to: Zvex.Collection
   defdelegate drop_index!(collection, field_name), to: Zvex.Collection
 
+  # -- Column management (DDL) -----------------------------------------------
+
+  def add_column(collection, name, data_type),
+    do: Zvex.Collection.add_column(collection, name, data_type)
+
+  defdelegate add_column(collection, name, data_type, opts), to: Zvex.Collection
+
+  def add_column!(collection, name, data_type),
+    do: Zvex.Collection.add_column!(collection, name, data_type)
+
+  defdelegate add_column!(collection, name, data_type, opts), to: Zvex.Collection
+  defdelegate drop_column(collection, column_name), to: Zvex.Collection
+  defdelegate drop_column!(collection, column_name), to: Zvex.Collection
+  defdelegate alter_column(collection, column_name, opts), to: Zvex.Collection
+  defdelegate alter_column!(collection, column_name, opts), to: Zvex.Collection
+
   # -- CRUD ------------------------------------------------------------------
 
   defdelegate insert(collection, doc_or_docs), to: Zvex.Collection

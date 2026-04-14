@@ -201,6 +201,86 @@ defmodule Zvex.Collection do
     drop_index(collection, field_name) |> Zvex.Error.unwrap!()
   end
 
+  # -- Column management (DDL) ------------------------------------------------
+
+  @spec add_column(t(), String.t(), atom(), keyword()) :: :ok | {:error, Zvex.Error.t()}
+  def add_column(%__MODULE__{} = collection, name, data_type, opts \\ [])
+      when is_binary(name) and is_atom(data_type) do
+    with :ok <- check_open(collection) do
+      field_map = %{
+        name: name,
+        data_type: data_type,
+        nullable: Keyword.get(opts, :nullable, false),
+        dimension: Keyword.get(opts, :dimension, 0)
+      }
+
+      field_map =
+        case Keyword.get(opts, :index) do
+          nil -> field_map
+          idx_opts when is_list(idx_opts) -> Map.put(field_map, :index, Map.new(idx_opts))
+        end
+
+      expression = Keyword.get(opts, :default)
+
+      case Zvex.Native.collection_add_column(collection.ref, field_map, expression) do
+        :ok -> :ok
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec add_column!(t(), String.t(), atom(), keyword()) :: :ok
+  def add_column!(collection, name, data_type, opts \\ []) do
+    add_column(collection, name, data_type, opts) |> Zvex.Error.unwrap!()
+  end
+
+  @spec drop_column(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
+  def drop_column(%__MODULE__{} = collection, column_name) when is_binary(column_name) do
+    with :ok <- check_open(collection) do
+      case Zvex.Native.collection_drop_column(collection.ref, column_name) do
+        :ok -> :ok
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec drop_column!(t(), String.t()) :: :ok
+  def drop_column!(collection, column_name) do
+    drop_column(collection, column_name) |> Zvex.Error.unwrap!()
+  end
+
+  @spec alter_column(t(), String.t(), keyword()) :: :ok | {:error, Zvex.Error.t()}
+  def alter_column(%__MODULE__{} = collection, column_name, opts)
+      when is_binary(column_name) and is_list(opts) do
+    with :ok <- check_open(collection) do
+      new_name = Keyword.get(opts, :new_name)
+
+      new_schema =
+        case Keyword.get(opts, :schema) do
+          nil ->
+            nil
+
+          schema_opts when is_list(schema_opts) ->
+            %{
+              name: Keyword.get(schema_opts, :name, column_name),
+              data_type: Keyword.fetch!(schema_opts, :data_type),
+              nullable: Keyword.get(schema_opts, :nullable, false),
+              dimension: Keyword.get(schema_opts, :dimension, 0)
+            }
+        end
+
+      case Zvex.Native.collection_alter_column(collection.ref, column_name, new_name, new_schema) do
+        :ok -> :ok
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec alter_column!(t(), String.t(), keyword()) :: :ok
+  def alter_column!(collection, column_name, opts) do
+    alter_column(collection, column_name, opts) |> Zvex.Error.unwrap!()
+  end
+
   # -- CRUD operations --------------------------------------------------------
 
   @spec insert(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::

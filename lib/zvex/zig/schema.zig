@@ -81,6 +81,44 @@ pub fn build_index_params(index_map: beam.term, out: *?*zvec.zvec_index_params_t
     return beam.make(.ok, .{});
 }
 
+const FieldSchemaResult = struct { result: beam.term, field_schema: ?*zvec.zvec_field_schema_t };
+
+pub fn build_field_schema(field_map: beam.term) FieldSchemaResult {
+    const fname_term = common.get_map_value(field_map, "name") orelse
+        return .{ .result = beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "field missing :name" } }, .{}), .field_schema = null };
+
+    var fname_buf: [1024]u8 = undefined;
+    const fname_cstr = common.get_binary_as_cstr(fname_term, &fname_buf) orelse
+        return .{ .result = beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{}), .field_schema = null };
+
+    const dtype_term = common.get_map_value(field_map, "data_type") orelse
+        return .{ .result = beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "field missing :data_type" } }, .{}), .field_schema = null };
+
+    const data_type = types.atom_to_data_type(dtype_term) orelse
+        return .{ .result = beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "unknown data type" } }, .{}), .field_schema = null };
+
+    const nullable_term = common.get_map_value(field_map, "nullable");
+    const nullable: bool = if (nullable_term) |t| (beam.get(bool, t, .{}) catch false) else false;
+
+    const dim_term = common.get_map_value(field_map, "dimension");
+    const dimension: u32 = if (dim_term) |t| (common.get_int_from_term(u32, t) orelse 0) else 0;
+
+    const field_schema = zvec.zvec_field_schema_create(fname_cstr, data_type, nullable, dimension) orelse
+        return .{ .result = beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate field schema" } }, .{}), .field_schema = null };
+
+    if (common.get_map_value(field_map, "index")) |index_map| {
+        if (!common.atom_eql(index_map, "nil")) {
+            const idx_result = setup_index_params(field_schema, index_map);
+            if (!common.atom_eql(idx_result, "ok")) {
+                zvec.zvec_field_schema_destroy(field_schema);
+                return .{ .result = idx_result, .field_schema = null };
+            }
+        }
+    }
+
+    return .{ .result = beam.make(.ok, .{}), .field_schema = field_schema };
+}
+
 fn setup_index_params(field_schema: *zvec.zvec_field_schema_t, index_map: beam.term) beam.term {
     var params: ?*zvec.zvec_index_params_t = null;
     const result = build_index_params(index_map, &params);
@@ -131,51 +169,15 @@ pub fn collection_create_and_open(path_term: beam.term, schema_map: beam.term, o
     while (e.enif_get_list_cell(beam.context.env, list, &head, &tail) == 1) : (list = tail) {
         const field_map = beam.term{ .v = head };
 
-        const fname_term = common.get_map_value(field_map, "name") orelse {
+        const built = build_field_schema(field_map);
+        if (built.field_schema == null) {
             zvec.zvec_collection_schema_destroy(c_schema);
-            return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "field missing :name" } }, .{});
-        };
-        var fname_buf: [1024]u8 = undefined;
-        const fname_cstr = common.get_binary_as_cstr(fname_term, &fname_buf) orelse {
-            zvec.zvec_collection_schema_destroy(c_schema);
-            return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{});
-        };
-
-        const dtype_term = common.get_map_value(field_map, "data_type") orelse {
-            zvec.zvec_collection_schema_destroy(c_schema);
-            return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "field missing :data_type" } }, .{});
-        };
-        const data_type = types.atom_to_data_type(dtype_term) orelse {
-            zvec.zvec_collection_schema_destroy(c_schema);
-            return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "unknown data type" } }, .{});
-        };
-
-        const nullable_term = common.get_map_value(field_map, "nullable");
-        const nullable: bool = if (nullable_term) |t| (beam.get(bool, t, .{}) catch false) else false;
-
-        const dim_term = common.get_map_value(field_map, "dimension");
-        const dimension: u32 = if (dim_term) |t| (common.get_int_from_term(u32, t) orelse 0) else 0;
-
-        const field_schema = zvec.zvec_field_schema_create(fname_cstr, data_type, nullable, dimension);
-        if (field_schema == null) {
-            zvec.zvec_collection_schema_destroy(c_schema);
-            return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate field schema" } }, .{});
-        }
-
-        if (common.get_map_value(field_map, "index")) |index_map| {
-            if (!common.atom_eql(index_map, "nil")) {
-                const idx_result = setup_index_params(field_schema.?, index_map);
-                if (!common.atom_eql(idx_result, "ok")) {
-                    zvec.zvec_field_schema_destroy(field_schema);
-                    zvec.zvec_collection_schema_destroy(c_schema);
-                    return idx_result;
-                }
-            }
+            return built.result;
         }
 
         zvec.zvec_clear_error();
-        const add_rc = zvec.zvec_collection_schema_add_field(c_schema, field_schema);
-        zvec.zvec_field_schema_destroy(field_schema);
+        const add_rc = zvec.zvec_collection_schema_add_field(c_schema, built.field_schema);
+        zvec.zvec_field_schema_destroy(built.field_schema);
 
         if (add_rc != zvec.ZVEC_OK) {
             zvec.zvec_collection_schema_destroy(c_schema);

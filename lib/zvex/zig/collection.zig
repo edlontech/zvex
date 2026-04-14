@@ -449,6 +449,103 @@ pub fn collection_drop_index(resource_term: beam.term, field_name_term: beam.ter
     return beam.make(.ok, .{});
 }
 
+pub fn collection_add_column(resource_term: beam.term, field_map: beam.term, expression_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    const built = schema.build_field_schema(field_map);
+    if (built.field_schema == null) return built.result;
+    defer zvec.zvec_field_schema_destroy(built.field_schema);
+
+    var expr_buf: [65536]u8 = undefined;
+    const expr_cstr: ?[*:0]const u8 = if (common.atom_eql(expression_term, "nil"))
+        null
+    else
+        common.get_binary_as_cstr(expression_term, &expr_buf);
+
+    zvec.zvec_clear_error();
+    const rc = zvec.zvec_collection_add_column(data.ptr, built.field_schema, expr_cstr);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    return beam.make(.ok, .{});
+}
+
+pub fn collection_drop_column(resource_term: beam.term, column_name_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    var name_buf: [4096]u8 = undefined;
+    const name_cstr = common.get_binary_as_cstr(column_name_term, &name_buf) orelse
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid column name" } }, .{});
+
+    zvec.zvec_clear_error();
+    const rc = zvec.zvec_collection_drop_column(data.ptr, name_cstr);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    return beam.make(.ok, .{});
+}
+
+pub fn collection_alter_column(resource_term: beam.term, column_name_term: beam.term, new_name_term: beam.term, new_schema_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    var col_buf: [4096]u8 = undefined;
+    const col_cstr = common.get_binary_as_cstr(column_name_term, &col_buf) orelse
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid column name" } }, .{});
+
+    var rename_buf: [4096]u8 = undefined;
+    const new_name_cstr: ?[*:0]const u8 = if (common.atom_eql(new_name_term, "nil"))
+        null
+    else
+        common.get_binary_as_cstr(new_name_term, &rename_buf) orelse
+            return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid new column name" } }, .{});
+
+    var new_field_schema: ?*zvec.zvec_field_schema_t = null;
+
+    if (!common.atom_eql(new_schema_term, "nil")) {
+        const built = schema.build_field_schema(new_schema_term);
+        if (built.field_schema == null) return built.result;
+        new_field_schema = built.field_schema;
+    }
+    defer if (new_field_schema) |fs| zvec.zvec_field_schema_destroy(fs);
+
+    zvec.zvec_clear_error();
+    const rc = zvec.zvec_collection_alter_column(data.ptr, col_cstr, new_name_cstr, new_field_schema);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    return beam.make(.ok, .{});
+}
+
 pub fn collection_fetch(resource_term: beam.term, pks_list: beam.term) beam.term {
     var res: resource.CollectionResource = undefined;
     res.get(resource_term, .{ .released = false }) catch
