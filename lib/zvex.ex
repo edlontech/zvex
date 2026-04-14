@@ -89,6 +89,13 @@ defmodule Zvex do
   defdelegate schema(collection), to: Zvex.Collection
   defdelegate schema!(collection), to: Zvex.Collection
 
+  # -- Index management (DDL) ------------------------------------------------
+
+  defdelegate create_index(collection, field_name, opts), to: Zvex.Collection
+  defdelegate create_index!(collection, field_name, opts), to: Zvex.Collection
+  defdelegate drop_index(collection, field_name), to: Zvex.Collection
+  defdelegate drop_index!(collection, field_name), to: Zvex.Collection
+
   # -- CRUD ------------------------------------------------------------------
 
   defdelegate insert(collection, doc_or_docs), to: Zvex.Collection

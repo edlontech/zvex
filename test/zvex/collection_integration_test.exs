@@ -247,6 +247,65 @@ defmodule Zvex.CollectionIntegrationTest do
     end
   end
 
+  describe "create_index/3" do
+    test "creates an hnsw index on an unindexed field", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert :ok =
+               Collection.create_index(coll, "embedding",
+                 type: :hnsw,
+                 metric: :cosine,
+                 m: 16,
+                 ef_construction: 200
+               )
+
+      {:ok, schema} = Collection.schema(coll)
+      embedding = Enum.find(schema.fields, &(&1.name == "embedding"))
+      assert %IndexParams{type: :hnsw, metric: :cosine} = embedding.index
+    end
+
+    test "create_index! returns :ok", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert :ok = Collection.create_index!(coll, "embedding", type: :hnsw, metric: :cosine)
+    end
+
+    test "returns error on closed collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      Zvex.Native.collection_close(coll.ref)
+
+      assert {:error, _} =
+               Collection.create_index(coll, "embedding", type: :hnsw, metric: :cosine)
+    end
+  end
+
+  describe "drop_index/2" do
+    test "drops an existing index", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, indexed_schema())
+
+      assert :ok = Collection.drop_index(coll, "embedding")
+    end
+
+    test "drop_index! returns :ok", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, indexed_schema())
+
+      assert :ok = Collection.drop_index!(coll, "embedding")
+    end
+
+    test "returns error on closed collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      Zvex.Native.collection_close(coll.ref)
+
+      assert {:error, _} = Collection.drop_index(coll, "embedding")
+    end
+  end
+
   describe "drop/1" do
     test "removes the collection directory", %{test_dir: test_dir} do
       path = collection_path(test_dir)

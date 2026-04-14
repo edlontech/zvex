@@ -29,15 +29,14 @@ fn create_collection_options(opts_map: beam.term) ?*zvec.zvec_collection_options
     return options;
 }
 
-fn setup_index_params(field_schema: *zvec.zvec_field_schema_t, index_map: beam.term) beam.term {
+pub fn build_index_params(index_map: beam.term, out: *?*zvec.zvec_index_params_t) beam.term {
     const type_term = common.get_map_value(index_map, "type") orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "index missing :type" } }, .{});
 
     const idx_type = types.atom_to_index_type(type_term) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "unknown index type" } }, .{});
 
-    const params = zvec.zvec_index_params_create(idx_type);
-    if (params == null)
+    const params = zvec.zvec_index_params_create(idx_type) orelse
         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate index params" } }, .{});
 
     if (common.get_map_value(index_map, "metric")) |mt| {
@@ -78,8 +77,17 @@ fn setup_index_params(field_schema: *zvec.zvec_field_schema_t, index_map: beam.t
         _ = zvec.zvec_index_params_set_invert_params(params, range_opt, wildcard);
     }
 
+    out.* = params;
+    return beam.make(.ok, .{});
+}
+
+fn setup_index_params(field_schema: *zvec.zvec_field_schema_t, index_map: beam.term) beam.term {
+    var params: ?*zvec.zvec_index_params_t = null;
+    const result = build_index_params(index_map, &params);
+    if (!common.atom_eql(result, "ok")) return result;
+
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_field_schema_set_index_params(field_schema, params);
+    const rc = zvec.zvec_field_schema_set_index_params(field_schema, params.?);
     zvec.zvec_index_params_destroy(params);
 
     if (rc != zvec.ZVEC_OK) {

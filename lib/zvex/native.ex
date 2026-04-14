@@ -26,6 +26,8 @@ defmodule Zvex.Native do
       collection_delete_with_results: [:dirty_cpu],
       collection_delete_by_filter: [:dirty_cpu],
       collection_fetch: [:dirty_cpu],
+      collection_create_index: [:dirty_cpu],
+      collection_drop_index: [:dirty_cpu],
       collection_query: [:dirty_cpu],
       doc_serialize: [:dirty_cpu],
       doc_deserialize: [:dirty_cpu]
@@ -115,6 +117,8 @@ defmodule Zvex.Native do
   pub const collection_delete_with_results = coll.collection_delete_with_results;
   pub const collection_delete_by_filter = coll.collection_delete_by_filter;
   pub const collection_fetch = coll.collection_fetch;
+  pub const collection_create_index = coll.collection_create_index;
+  pub const collection_drop_index = coll.collection_drop_index;
   pub const collection_query = query_mod.collection_query;
   pub const doc_serialize = document.doc_serialize;
   pub const doc_deserialize = document.doc_deserialize;

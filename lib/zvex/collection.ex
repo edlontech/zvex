@@ -166,6 +166,41 @@ defmodule Zvex.Collection do
     |> Zvex.Error.unwrap!()
   end
 
+  # -- Index management (DDL) -------------------------------------------------
+
+  @spec create_index(t(), String.t(), keyword()) :: :ok | {:error, Zvex.Error.t()}
+  def create_index(%__MODULE__{} = collection, field_name, opts)
+      when is_binary(field_name) and is_list(opts) do
+    with :ok <- check_open(collection) do
+      index_map = Map.new(opts)
+
+      case Zvex.Native.collection_create_index(collection.ref, field_name, index_map) do
+        :ok -> :ok
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec create_index!(t(), String.t(), keyword()) :: :ok
+  def create_index!(collection, field_name, opts) do
+    create_index(collection, field_name, opts) |> Zvex.Error.unwrap!()
+  end
+
+  @spec drop_index(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
+  def drop_index(%__MODULE__{} = collection, field_name) when is_binary(field_name) do
+    with :ok <- check_open(collection) do
+      case Zvex.Native.collection_drop_index(collection.ref, field_name) do
+        :ok -> :ok
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec drop_index!(t(), String.t()) :: :ok
+  def drop_index!(collection, field_name) do
+    drop_index(collection, field_name) |> Zvex.Error.unwrap!()
+  end
+
   # -- CRUD operations --------------------------------------------------------
 
   @spec insert(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::

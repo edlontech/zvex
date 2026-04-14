@@ -4,6 +4,7 @@ const common = @import("common.zig");
 const zvec = common.zvec;
 const document = @import("document.zig");
 const resource = @import("resource.zig");
+const schema = @import("schema.zig");
 
 pub fn collection_close(resource_term: beam.term) beam.term {
     var res: resource.CollectionResource = undefined;
@@ -385,6 +386,61 @@ pub fn collection_delete_by_filter(resource_term: beam.term, filter_term: beam.t
 
     zvec.zvec_clear_error();
     const rc = zvec.zvec_collection_delete_by_filter(data.ptr, filter_cstr);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    return beam.make(.ok, .{});
+}
+
+pub fn collection_create_index(resource_term: beam.term, field_name_term: beam.term, index_map: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    var field_buf: [4096]u8 = undefined;
+    const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{});
+
+    var params: ?*zvec.zvec_index_params_t = null;
+    const build_result = schema.build_index_params(index_map, &params);
+    if (!common.atom_eql(build_result, "ok")) return build_result;
+    defer zvec.zvec_index_params_destroy(params);
+
+    zvec.zvec_clear_error();
+    const rc = zvec.zvec_collection_create_index(data.ptr, field_cstr, params);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    return beam.make(.ok, .{});
+}
+
+pub fn collection_drop_index(resource_term: beam.term, field_name_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    var field_buf: [4096]u8 = undefined;
+    const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{});
+
+    zvec.zvec_clear_error();
+    const rc = zvec.zvec_collection_drop_index(data.ptr, field_cstr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
