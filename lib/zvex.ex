@@ -89,6 +89,22 @@ defmodule Zvex do
   defdelegate schema(collection), to: Zvex.Collection
   defdelegate schema!(collection), to: Zvex.Collection
 
+  # -- Options introspection -------------------------------------------------
+
+  defdelegate options(collection), to: Zvex.Collection
+  defdelegate options!(collection), to: Zvex.Collection
+
+  # -- Schema introspection -------------------------------------------------
+
+  defdelegate has_field?(collection, field_name), to: Zvex.Collection
+  defdelegate has_index?(collection, field_name), to: Zvex.Collection
+
+  def field_names(collection), do: Zvex.Collection.field_names(collection)
+  defdelegate field_names(collection, category), to: Zvex.Collection
+
+  def field_names!(collection), do: Zvex.Collection.field_names!(collection)
+  defdelegate field_names!(collection, category), to: Zvex.Collection
+
   # -- Index management (DDL) ------------------------------------------------
 
   defdelegate create_index(collection, field_name, opts), to: Zvex.Collection

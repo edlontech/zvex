@@ -166,6 +166,68 @@ defmodule Zvex.Collection do
     |> Zvex.Error.unwrap!()
   end
 
+  # -- Options introspection ---------------------------------------------------
+
+  @spec options(t()) :: {:ok, map()} | {:error, Zvex.Error.t()}
+  def options(%__MODULE__{} = collection) do
+    with :ok <- check_open(collection) do
+      case Zvex.Native.collection_get_options(collection.ref) do
+        {:ok, opts_map} -> {:ok, opts_map}
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec options!(t()) :: map()
+  def options!(%__MODULE__{} = collection) do
+    options(collection) |> Zvex.Error.unwrap!()
+  end
+
+  # -- Schema introspection ---------------------------------------------------
+
+  @spec has_field?(t(), String.t()) :: boolean()
+  def has_field?(%__MODULE__{} = collection, field_name) when is_binary(field_name) do
+    case Zvex.Native.collection_has_field(collection.ref, field_name) do
+      {:ok, result} -> result
+      _ -> false
+    end
+  end
+
+  @spec has_index?(t(), String.t()) :: boolean()
+  def has_index?(%__MODULE__{} = collection, field_name) when is_binary(field_name) do
+    case Zvex.Native.collection_has_index(collection.ref, field_name) do
+      {:ok, result} -> result
+      _ -> false
+    end
+  end
+
+  @spec field_names(t()) :: {:ok, [String.t()]} | {:error, Zvex.Error.t()}
+  def field_names(%__MODULE__{} = collection) do
+    field_names(collection, :all)
+  end
+
+  @spec field_names(t(), :all | :forward | :vector | :indexed) ::
+          {:ok, [String.t()]} | {:error, Zvex.Error.t()}
+  def field_names(%__MODULE__{} = collection, category)
+      when category in [:all, :forward, :vector, :indexed] do
+    with :ok <- check_open(collection) do
+      case Zvex.Native.collection_field_names(collection.ref, category) do
+        {:ok, names} -> {:ok, names}
+        {:error, _} = err -> Zvex.Error.from_native(err)
+      end
+    end
+  end
+
+  @spec field_names!(t()) :: [String.t()]
+  def field_names!(%__MODULE__{} = collection) do
+    field_names(collection) |> Zvex.Error.unwrap!()
+  end
+
+  @spec field_names!(t(), :all | :forward | :vector | :indexed) :: [String.t()]
+  def field_names!(%__MODULE__{} = collection, category) do
+    field_names(collection, category) |> Zvex.Error.unwrap!()
+  end
+
   # -- Index management (DDL) -------------------------------------------------
 
   @spec create_index(t(), String.t(), keyword()) :: :ok | {:error, Zvex.Error.t()}

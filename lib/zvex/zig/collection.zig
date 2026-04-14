@@ -546,6 +546,176 @@ pub fn collection_alter_column(resource_term: beam.term, column_name_term: beam.
     return beam.make(.ok, .{});
 }
 
+pub fn collection_get_options(resource_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    zvec.zvec_clear_error();
+    var opts: ?*zvec.zvec_collection_options_t = null;
+    const rc = zvec.zvec_collection_get_options(data.ptr, &opts);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    const opts_ptr = opts.?;
+    const enable_mmap = zvec.zvec_collection_options_get_enable_mmap(opts_ptr);
+    const max_buffer_size = zvec.zvec_collection_options_get_max_buffer_size(opts_ptr);
+    const read_only = zvec.zvec_collection_options_get_read_only(opts_ptr);
+
+    zvec.zvec_collection_options_destroy(opts_ptr);
+
+    const result_map = beam.make(.{
+        .enable_mmap = enable_mmap,
+        .max_buffer_size = max_buffer_size,
+        .read_only = read_only,
+    }, .{});
+
+    return beam.make(.{ .ok, result_map }, .{});
+}
+
+pub fn collection_has_field(resource_term: beam.term, field_name_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    var field_buf: [4096]u8 = undefined;
+    const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{});
+
+    zvec.zvec_clear_error();
+    var c_schema: ?*zvec.zvec_collection_schema_t = null;
+    const rc = zvec.zvec_collection_get_schema(data.ptr, &c_schema);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    const schema_ptr = c_schema.?;
+    const result = zvec.zvec_collection_schema_has_field(schema_ptr, field_cstr);
+    zvec.zvec_collection_schema_destroy(schema_ptr);
+
+    return beam.make(.{ .ok, result }, .{});
+}
+
+pub fn collection_has_index(resource_term: beam.term, field_name_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    var field_buf: [4096]u8 = undefined;
+    const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{});
+
+    zvec.zvec_clear_error();
+    var c_schema: ?*zvec.zvec_collection_schema_t = null;
+    const rc = zvec.zvec_collection_get_schema(data.ptr, &c_schema);
+
+    if (rc != zvec.ZVEC_OK) {
+        return common.make_error_result(rc);
+    }
+
+    const schema_ptr = c_schema.?;
+    const result = zvec.zvec_collection_schema_has_index(schema_ptr, field_cstr);
+    zvec.zvec_collection_schema_destroy(schema_ptr);
+
+    return beam.make(.{ .ok, result }, .{});
+}
+
+pub fn collection_field_names(resource_term: beam.term, category_term: beam.term) beam.term {
+    var res: resource.CollectionResource = undefined;
+    res.get(resource_term, .{ .released = false }) catch
+        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
+
+    const data = res.unpack();
+
+    if (data.closed) {
+        return beam.make(.{ .@"error", .{ beam.make(.failed_precondition, .{}), "collection is closed" } }, .{});
+    }
+
+    zvec.zvec_clear_error();
+    var c_schema: ?*zvec.zvec_collection_schema_t = null;
+    const schema_rc = zvec.zvec_collection_get_schema(data.ptr, &c_schema);
+
+    if (schema_rc != zvec.ZVEC_OK) {
+        return common.make_error_result(schema_rc);
+    }
+
+    const schema_ptr = c_schema.?;
+
+    var names: [*c][*c]const u8 = undefined;
+    var count: usize = 0;
+
+    const rc = if (common.atom_eql(category_term, "forward"))
+        zvec.zvec_collection_schema_get_forward_field_names(schema_ptr, &names, &count)
+    else if (common.atom_eql(category_term, "indexed"))
+        zvec.zvec_collection_schema_get_forward_field_names_with_index(schema_ptr, &names, &count)
+    else
+        zvec.zvec_collection_schema_get_all_field_names(schema_ptr, &names, &count);
+
+    if (rc != zvec.ZVEC_OK) {
+        zvec.zvec_collection_schema_destroy(schema_ptr);
+        return common.make_error_result(rc);
+    }
+
+    var result_list = beam.make_empty_list(.{});
+
+    if (common.atom_eql(category_term, "vector")) {
+        var fields: [*c]?*zvec.zvec_field_schema_t = undefined;
+        var field_count: usize = 0;
+        const vec_rc = zvec.zvec_collection_schema_get_vector_fields(schema_ptr, &fields, &field_count);
+
+        if (vec_rc == zvec.ZVEC_OK) {
+            var vi: usize = field_count;
+            while (vi > 0) {
+                vi -= 1;
+                if (fields[vi]) |field_ptr| {
+                    const fname_ptr = zvec.zvec_field_schema_get_name(field_ptr);
+                    if (fname_ptr) |np| {
+                        const name_len = std.mem.len(@as([*:0]const u8, @ptrCast(np)));
+                        const name_term = beam.make(@as([*]const u8, @ptrCast(np))[0..name_len], .{});
+                        result_list = beam.make_list_cell(name_term, result_list, .{});
+                    }
+                }
+            }
+            zvec.zvec_free(@ptrCast(fields));
+        }
+    } else {
+        var ni: usize = count;
+        while (ni > 0) {
+            ni -= 1;
+            const name_cstr = names[ni];
+            const name_len = std.mem.len(@as([*:0]const u8, @ptrCast(name_cstr)));
+            const name_term = beam.make(@as([*]const u8, @ptrCast(name_cstr))[0..name_len], .{});
+            result_list = beam.make_list_cell(name_term, result_list, .{});
+        }
+        zvec.zvec_free(@ptrCast(names));
+    }
+
+    zvec.zvec_collection_schema_destroy(schema_ptr);
+
+    return beam.make(.{ .ok, result_list }, .{});
+}
+
 pub fn collection_fetch(resource_term: beam.term, pks_list: beam.term) beam.term {
     var res: resource.CollectionResource = undefined;
     res.get(resource_term, .{ .released = false }) catch

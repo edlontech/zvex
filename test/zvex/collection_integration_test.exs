@@ -410,6 +410,153 @@ defmodule Zvex.CollectionIntegrationTest do
     end
   end
 
+  describe "options/1" do
+    test "returns options for a collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert {:ok, opts} = Collection.options(coll)
+      assert is_boolean(Map.get(opts, :enable_mmap))
+      assert is_integer(Map.get(opts, :max_buffer_size))
+      assert is_boolean(Map.get(opts, :read_only))
+    end
+
+    test "returns options reflecting open-time settings", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema(), read_only: false)
+
+      {:ok, opts} = Collection.options(coll)
+      assert opts.read_only == false
+    end
+
+    test "options! returns the map directly", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert %{enable_mmap: _, max_buffer_size: _, read_only: _} = Collection.options!(coll)
+    end
+
+    test "returns error on closed collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      Zvex.Native.collection_close(coll.ref)
+
+      assert {:error, _} = Collection.options(coll)
+    end
+  end
+
+  describe "has_field?/2" do
+    test "returns true for existing field", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert Collection.has_field?(coll, "id")
+      assert Collection.has_field?(coll, "embedding")
+    end
+
+    test "returns false for non-existent field", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      refute Collection.has_field?(coll, "nonexistent")
+    end
+
+    test "reflects dynamically added columns", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      refute Collection.has_field?(coll, "score")
+      :ok = Collection.add_column(coll, "score", :double, nullable: true)
+      assert Collection.has_field?(coll, "score")
+    end
+  end
+
+  describe "has_index?/2" do
+    test "returns true for indexed field", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, indexed_schema())
+
+      assert Collection.has_index?(coll, "embedding")
+    end
+
+    test "returns false for non-indexed field", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      refute Collection.has_index?(coll, "embedding")
+    end
+
+    test "reflects dynamically created indexes", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      refute Collection.has_index?(coll, "embedding")
+      :ok = Collection.create_index(coll, "embedding", type: :hnsw, metric: :cosine)
+      assert Collection.has_index?(coll, "embedding")
+    end
+  end
+
+  describe "field_names/1 and field_names/2" do
+    test "returns all field names", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, indexed_schema())
+
+      {:ok, names} = Collection.field_names(coll)
+      assert "id" in names
+      assert "embedding" in names
+      assert "title" in names
+    end
+
+    test "returns forward (scalar) field names", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, indexed_schema())
+
+      {:ok, names} = Collection.field_names(coll, :forward)
+      assert "id" in names
+      assert "title" in names
+      refute "embedding" in names
+    end
+
+    test "returns vector field names", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, indexed_schema())
+
+      {:ok, names} = Collection.field_names(coll, :vector)
+      assert "embedding" in names
+      refute "id" in names
+    end
+
+    test "returns indexed field names", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, indexed_schema())
+
+      {:ok, names} = Collection.field_names(coll, :indexed)
+      assert is_list(names)
+    end
+
+    test "field_names! returns list directly", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert is_list(Collection.field_names!(coll))
+    end
+
+    test "field_names!/2 returns list directly", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      assert is_list(Collection.field_names!(coll, :forward))
+    end
+
+    test "returns error on closed collection", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      Zvex.Native.collection_close(coll.ref)
+
+      assert {:error, _} = Collection.field_names(coll)
+    end
+  end
+
   describe "drop/1" do
     test "removes the collection directory", %{test_dir: test_dir} do
       path = collection_path(test_dir)
