@@ -17,9 +17,16 @@ CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release \
 
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-.PHONY: all clean force
+.PHONY: all build clean force
 
-all: $(PRIV_DIR)/lib/$(SHARED_LIB) $(PRIV_DIR)/include/zvec/c_api.h
+all:
+	@if [ -f $(PRIV_DIR)/.zvex_precompiled ]; then \
+	  echo "[zvex] using precompiled libzvec_c_api"; \
+	  exit 0; \
+	fi
+	@$(MAKE) --no-print-directory build
+
+build: $(PRIV_DIR)/lib/$(SHARED_LIB) $(PRIV_DIR)/include/zvec/c_api.h
 
 $(ZVEC_BUILD)/Makefile: $(ZVEC_SRC)/CMakeLists.txt
 	cmake -S $(ZVEC_SRC) -B $(ZVEC_BUILD) $(CMAKE_FLAGS)
@@ -42,3 +49,4 @@ clean:
 	rm -rf $(ZVEC_BUILD)
 	rm -f $(PRIV_DIR)/lib/$(SHARED_LIB)
 	rm -rf $(PRIV_DIR)/include/zvec
+	rm -f $(PRIV_DIR)/.zvex_precompiled

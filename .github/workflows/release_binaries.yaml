@@ -1,0 +1,199 @@
+name: Release binaries
+
+on:
+  push:
+    tags:
+      - "zvec-v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64-gnu
+            runner: ubuntu-22.04
+            container: ""
+            shared_lib: libzvec_c_api.so
+          - target: linux-aarch64-gnu
+            runner: ubuntu-22.04-arm
+            container: ""
+            shared_lib: libzvec_c_api.so
+          - target: linux-x86_64-musl
+            runner: ubuntu-22.04
+            container: alpine:3.19
+            shared_lib: libzvec_c_api.so
+          - target: darwin-aarch64
+            runner: macos-14
+            container: ""
+            shared_lib: libzvec_c_api.dylib
+
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+
+    steps:
+      - name: Install musl toolchain (Alpine only)
+        if: matrix.container == 'alpine:3.19'
+        run: apk add --no-cache build-base cmake git bash tar gzip coreutils
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install toolchain (Ubuntu)
+        if: startsWith(matrix.runner, 'ubuntu') && matrix.container == ''
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+      - name: Install toolchain (macOS)
+        if: startsWith(matrix.runner, 'macos')
+        run: brew install cmake
+
+      - name: Extract tag version
+        id: version
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#zvec-v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Configure and build
+        run: |
+          cmake -S c_src/zvec -B _build/zvec \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_C_BINDINGS=ON \
+            -DBUILD_PYTHON_BINDINGS=OFF \
+            -DBUILD_TOOLS=OFF \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          cmake --build _build/zvec --config Release --target zvec_c_api -j
+
+      - name: Stage artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          staging=priv-staging
+          mkdir -p "$staging/lib" "$staging/include/zvec"
+          cp _build/zvec/lib/${{ matrix.shared_lib }} "$staging/lib/"
+          cp c_src/zvec/src/include/zvec/c_api.h "$staging/include/zvec/"
+
+      - name: Fix macOS install name
+        if: startsWith(matrix.runner, 'macos')
+        run: install_name_tool -id @rpath/${{ matrix.shared_lib }} priv-staging/lib/${{ matrix.shared_lib }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="zvec-v${{ steps.version.outputs.version }}-${{ matrix.target }}"
+          tar -C priv-staging -czf "${name}.tar.gz" lib include
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256"
+          else
+            shasum -a 256 "${name}.tar.gz" > "${name}.tar.gz.sha256"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zvec-${{ matrix.target }}
+          path: |
+            zvec-v*.tar.gz
+            zvec-v*.tar.gz.sha256
+
+  publish:
+    name: Attach to release
+    needs: build
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create / update release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+
+  smoke:
+    name: Smoke test ${{ matrix.target }}
+    needs: publish
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-x86_64-gnu
+            runner: ubuntu-22.04
+            container: ""
+          - target: linux-aarch64-gnu
+            runner: ubuntu-22.04-arm
+            container: ""
+          - target: linux-x86_64-musl
+            runner: ubuntu-22.04
+            container: hexpm/elixir:1.19.4-erlang-28.3.3-alpine-3.21.7
+          - target: darwin-aarch64
+            runner: macos-14
+            container: ""
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
+    steps:
+      - name: Install deps (Alpine container)
+        if: matrix.container != ''
+        shell: sh
+        run: apk add --no-cache bash git curl tar gzip xz
+
+      - name: Install zig (Alpine container)
+        if: matrix.container != ''
+        shell: sh
+        run: |
+          curl -sSL https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz -o /tmp/zig.tar.xz
+          mkdir -p /opt/zig
+          tar -xJf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          ln -sf /opt/zig/zig /usr/local/bin/zig
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: erlef/setup-beam@v1
+        if: matrix.container == ''
+        with:
+          elixir-version: "1.19.4"
+          otp-version: "28.3"
+
+      - uses: mlugg/setup-zig@v2
+        if: matrix.container == ''
+        with:
+          version: "0.15.2"
+
+      - name: Compile with downloaded artifact
+        run: |
+          mix deps.get
+          ok=0
+          for i in 1 2 3 4 5; do
+            if mix deps.compile; then
+              ok=1
+              break
+            fi
+            echo "Retry $i..."
+            sleep 10
+          done
+          if [ "$ok" != "1" ]; then
+            echo "mix deps.compile failed after 5 attempts" >&2
+            exit 1
+          fi
+          mix compile

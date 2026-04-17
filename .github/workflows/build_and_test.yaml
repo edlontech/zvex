@@ -17,6 +17,8 @@ jobs:
 
     name: Build and test
     runs-on: ubuntu-latest
+    env:
+      ZVEX_BUILD: "true"
 
     steps:
       - name: "Checkout code"

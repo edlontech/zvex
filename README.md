@@ -26,7 +26,23 @@ def deps do
 end
 ```
 
-Zvex requires the `zvec` C library to be available on your system. The NIF is compiled automatically via `elixir_make` and `zigler`.
+`zvex` ships prebuilt `libzvec_c_api` binaries for the targets listed below. On `mix deps.compile`, the matching binary is downloaded from the GitHub Releases for this repo and verified via SHA256. Zig is still required (the NIF compiles locally via Zigler).
+
+### Supported prebuilt targets
+
+- `linux-x86_64-gnu` (glibc >= 2.35 / Ubuntu 22.04+)
+- `linux-aarch64-gnu`
+- `linux-x86_64-musl` (Alpine)
+- `darwin-aarch64` (Apple Silicon)
+
+Other targets (e.g. Windows, FreeBSD, darwin-x86_64) fall through to a source build requiring `cmake` + a C++ toolchain + the `c_src/zvec` git submodule.
+
+### Environment variables
+
+| Variable          | Effect                                                                  |
+|-------------------|-------------------------------------------------------------------------|
+| `ZVEX_BUILD=true` | Skip download, build `libzvec_c_api` from the vendored submodule.       |
+| `ZVEX_BUILD_URL`  | Override the download prefix (private mirrors, airgapped environments). |
 
 ## Quick Start
 
