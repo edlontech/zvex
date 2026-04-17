@@ -32,10 +32,9 @@ end
 
 - `linux-x86_64-gnu` (glibc >= 2.35 / Ubuntu 22.04+)
 - `linux-aarch64-gnu`
-- `linux-x86_64-musl` (Alpine)
 - `darwin-aarch64` (Apple Silicon)
 
-Other targets (e.g. Windows, FreeBSD, darwin-x86_64) fall through to a source build requiring `cmake` + a C++ toolchain + the `c_src/zvec` git submodule.
+Other targets (e.g. Windows, FreeBSD, darwin-x86_64, Alpine/musl) fall through to a source build requiring `cmake` + a C++ toolchain + the `c_src/zvec` git submodule.
 
 ### Environment variables
 
