@@ -1,7 +1,7 @@
 defmodule Zvex.MixProject do
   use Mix.Project
 
-  @zvec_version "0.3.0"
+  @zvec_version "0.4.0" # x-release-please-version
   @sentinel ".zvex_precompiled"
   @manifest_vsn 1
 
@@ -167,7 +167,7 @@ defmodule Zvex.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/edlontech/zvec"},
-      files: ~w(lib mix.exs README.md CHANGELOG.md LICENSE .formatter.exs)
+      files: ~w(lib mix.exs Makefile README.md CHANGELOG.md LICENSE .formatter.exs)
     ]
   end
 
@@ -184,7 +184,11 @@ defmodule Zvex.MixProject do
             {:ok, []}
 
           :unsupported ->
-            Mix.shell().info("[zvex] unsupported target — falling through to source build")
+            Mix.shell().info(
+              "[zvex] no precompiled binary for this target — building from source " <>
+                "(requires c_src/zvec submodule and a working toolchain)"
+            )
+
             {:noop, []}
         end
     end
@@ -242,7 +246,7 @@ defmodule Zvex.MixProject do
   defp classify(rest, arch) do
     cond do
       String.contains?(rest, "linux-musl") ->
-        {:ok, "linux-#{arch}-musl"}
+        :unsupported
 
       String.contains?(rest, "linux-gnu") or String.contains?(rest, "linux") ->
         {:ok, "linux-#{arch}-gnu"}
