@@ -1,7 +1,8 @@
 defmodule Zvex.MixProject do
   use Mix.Project
 
-  @zvec_version "0.4.0" # x-release-please-version
+  # x-release-please-version
+  @zvec_version "0.4.0"
   @sentinel ".zvex_precompiled"
   @manifest_vsn 1
 
