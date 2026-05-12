@@ -9,19 +9,28 @@ permissions:
 
 jobs:
   build:
+    name: Build and test
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 30
     strategy:
       matrix:
         elixir: ["1.19.4"]
         otp: ["28.3"]
         zig: ["0.15.2"]
 
-    name: Build and test
-    runs-on: ubuntu-latest
     env:
       ZVEX_BUILD: "true"
+      CMAKE_FLAGS: >-
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DBUILD_C_BINDINGS=ON
+        -DBUILD_PYTHON_BINDINGS=OFF
+        -DBUILD_TOOLS=OFF
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 
     steps:
-      - name: "Checkout code"
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           submodules: recursive
@@ -34,11 +43,22 @@ jobs:
         with:
           elixir-version: ${{ matrix.elixir }}
           otp-version: ${{ matrix.otp }}
-       
+
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
           version: ${{ matrix.zig }}
+
+      - name: Resolve submodule SHA
+        id: submodule
+        shell: bash
+        run: echo "sha=$(git -C c_src/zvec rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: build-and-test-${{ runner.os }}-${{ runner.arch }}
+          max-size: 1G
 
       - name: Restore deps and _build cache
         id: mix-deps
@@ -47,8 +67,17 @@ jobs:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-
+
+      - name: Cache CMake build directory
+        uses: actions/cache@v4
+        with:
+          path: _build/zvec
+          key: cmake-build-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
+          restore-keys: |
+            cmake-build-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-
+            cmake-build-test-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Fetch and Compile Dependencies
         if: steps.mix-deps.outputs.cache-hit != 'true'
@@ -60,14 +89,13 @@ jobs:
         uses: actions/cache@v4
         id: plt-cache
         with:
-          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-plts-${{ hashFiles('**/mix.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-plts-${{ hashFiles('**/mix.lock') }}
           path: |
             _plts/core
 
       - name: Create PLTs
         if: steps.plt-cache.outputs.cache-hit != 'true'
-        run: |
-          mix dialyzer --plt
+        run: mix dialyzer --plt
 
       - name: Run Checks
         run: mix check

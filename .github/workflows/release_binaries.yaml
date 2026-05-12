@@ -18,13 +18,13 @@ jobs:
       matrix:
         include:
           - target: linux-x86_64-gnu
-            runner: ubuntu-22.04
+            runner: ubuntu-24.04-8-cores-x64
             shared_lib: libzvec_c_api.so
           - target: linux-aarch64-gnu
             runner: ubuntu-22.04-arm
             shared_lib: libzvec_c_api.so
           - target: darwin-aarch64
-            runner: macos-14
+            runner: macos-14-xlarge
             shared_lib: libzvec_c_api.dylib
 
     runs-on: ${{ matrix.runner }}

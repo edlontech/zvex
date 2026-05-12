@@ -31,12 +31,22 @@ jobs:
   publish:
     needs: [release-please]
     if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 30
     strategy:
       matrix:
         elixir: ["1.19.4"]
         otp: ["28.3"]
         zig: ["0.15.2"]
-    runs-on: ubuntu-latest
+    env:
+      CMAKE_FLAGS: >-
+        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_C_COMPILER_LAUNCHER=ccache
+        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+        -DBUILD_C_BINDINGS=ON
+        -DBUILD_PYTHON_BINDINGS=OFF
+        -DBUILD_TOOLS=OFF
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,14 +67,34 @@ jobs:
         with:
           version: ${{ matrix.zig }}
 
+      - name: Resolve submodule SHA
+        id: submodule
+        shell: bash
+        run: echo "sha=$(git -C c_src/zvec rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: publish-${{ runner.os }}-${{ runner.arch }}
+          max-size: 1G
+
       - name: Restore deps and _build cache
         uses: actions/cache@v4
         with:
           path: |
             deps
             _build
-          key: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-
+
+      - name: Cache CMake build directory
+        uses: actions/cache@v4
+        with:
+          path: _build/zvec
+          key: cmake-publish-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
+          restore-keys: |
+            cmake-publish-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-
+            cmake-publish-${{ runner.os }}-${{ runner.arch }}-
 
       - name: Fetch and Compile Dependencies
         run: |
