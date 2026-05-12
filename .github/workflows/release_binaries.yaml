@@ -35,14 +35,6 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install toolchain (Ubuntu)
-        if: startsWith(matrix.runner, 'ubuntu')
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
-
-      - name: Install toolchain (macOS)
-        if: startsWith(matrix.runner, 'macos')
-        run: brew install cmake
-
       - name: Extract tag version
         id: version
         shell: bash
@@ -52,10 +44,32 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve submodule SHA
+        id: submodule
+        shell: bash
+        run: echo "sha=$(git -C c_src/zvec rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.target }}
+          max-size: 1G
+
+      - name: Cache CMake build directory
+        uses: actions/cache@v4
+        with:
+          path: _build/zvec
+          key: cmake-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
+          restore-keys: |
+            cmake-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-
+            cmake-${{ matrix.target }}-
+
       - name: Configure and build
         run: |
           cmake -S c_src/zvec -B _build/zvec \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_C_BINDINGS=ON \
             -DBUILD_PYTHON_BINDINGS=OFF \
             -DBUILD_TOOLS=OFF \
@@ -133,8 +147,6 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - uses: erlef/setup-beam@v1
         with:
@@ -144,6 +156,17 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: "0.15.2"
+
+      - name: Cache hex deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            ~/.hex
+            ~/.mix
+          key: mix-${{ matrix.target }}-${{ hashFiles('mix.lock') }}
+          restore-keys: |
+            mix-${{ matrix.target }}-
 
       - name: Compile with downloaded artifact
         run: |
