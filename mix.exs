@@ -181,8 +181,17 @@ defmodule Zvex.MixProject do
       true ->
         case detect_target() do
           {:ok, target} ->
-            fetch_precompiled(target)
-            {:ok, []}
+            case fetch_precompiled(target) do
+              :ok ->
+                {:ok, []}
+
+              {:error, reason} ->
+                Mix.shell().info(
+                  "[zvex] precompiled binary unavailable (#{reason}) — falling back to source build"
+                )
+
+                {:noop, []}
+            end
 
           :unsupported ->
             Mix.shell().info(
@@ -203,17 +212,32 @@ defmodule Zvex.MixProject do
 
     File.mkdir_p!(cache_dir)
 
-    unless sentinel_valid?(version, target) do
-      unless File.exists?(tarball) and File.exists?(sha_file) do
-        download!(url(version, target), tarball)
-        download!(url(version, target) <> ".sha256", sha_file)
+    if sentinel_valid?(version, target) do
+      :ok
+    else
+      with :ok <- ensure_downloaded(version, target, tarball, sha_file),
+           :ok <- verify_sha256(tarball, sha_file),
+           :ok <- replace_priv(tarball) do
+        write_sentinel(version, target)
+        :ok
       end
-
-      verify_sha256!(tarball, sha_file)
-      wipe_priv()
-      extract!(tarball, priv_dir())
-      write_sentinel(version, target)
     end
+  end
+
+  defp ensure_downloaded(version, target, tarball, sha_file) do
+    if File.exists?(tarball) and File.exists?(sha_file) do
+      :ok
+    else
+      with :ok <- download(url(version, target), tarball),
+           :ok <- download(url(version, target) <> ".sha256", sha_file) do
+        :ok
+      end
+    end
+  end
+
+  defp replace_priv(tarball) do
+    wipe_priv()
+    extract(tarball, priv_dir())
   end
 
   defp cache_root do
@@ -260,7 +284,7 @@ defmodule Zvex.MixProject do
     end
   end
 
-  defp download!(url, dest) do
+  defp download(url, dest) do
     Mix.shell().info("[zvex] downloading #{url}")
     {:ok, _} = Application.ensure_all_started(:inets)
     {:ok, _} = Application.ensure_all_started(:ssl)
@@ -275,23 +299,15 @@ defmodule Zvex.MixProject do
 
       {:ok, {{_, status, _}, _, _}} ->
         File.rm(dest)
-
-        Mix.raise(
-          "[zvex] download failed (HTTP #{status}) for #{url}. " <>
-            "Re-run the release workflow or set ZVEX_BUILD=true to build from source."
-        )
+        {:error, "HTTP #{status} for #{url}"}
 
       {:error, reason} ->
         File.rm(dest)
-
-        Mix.raise(
-          "[zvex] download failed for #{url}: #{inspect(reason)}. " <>
-            "Set ZVEX_BUILD_URL=<mirror> or ZVEX_BUILD=true."
-        )
+        {:error, "transport error for #{url}: #{inspect(reason)}"}
     end
   end
 
-  defp verify_sha256!(tarball, sha_file) do
+  defp verify_sha256(tarball, sha_file) do
     expected =
       sha_file
       |> File.read!()
@@ -305,14 +321,12 @@ defmodule Zvex.MixProject do
       |> then(&:crypto.hash(:sha256, &1))
       |> Base.encode16(case: :lower)
 
-    if actual != expected do
+    if actual == expected do
+      :ok
+    else
       File.rm(tarball)
       File.rm(sha_file)
-
-      Mix.raise(
-        "[zvex] checksum mismatch for #{Path.basename(tarball)}. " <>
-          "Cache wiped. Retry, or set ZVEX_BUILD=true to build from source."
-      )
+      {:error, "checksum mismatch for #{Path.basename(tarball)} (cache wiped)"}
     end
   end
 
@@ -322,45 +336,42 @@ defmodule Zvex.MixProject do
     File.mkdir_p!(priv)
   end
 
-  defp extract!(tarball, dest) do
+  defp extract(tarball, dest) do
     tarball_charlist = String.to_charlist(tarball)
 
     with {:ok, entries} <- :erl_tar.table(tarball_charlist, [:compressed]),
-         :ok <- validate_entries!(entries, tarball),
-         :ok <-
-           :erl_tar.extract(tarball_charlist, [:compressed, {:cwd, String.to_charlist(dest)}]) do
-      :ok
+         :ok <- validate_entries(entries) do
+      case :erl_tar.extract(tarball_charlist, [:compressed, {:cwd, String.to_charlist(dest)}]) do
+        :ok ->
+          :ok
+
+        {:error, reason} ->
+          File.rm(tarball)
+          {:error, "failed to extract #{Path.basename(tarball)}: #{inspect(reason)}"}
+      end
     else
-      {:error, reason} ->
-        File.rm(tarball)
-        Mix.raise("[zvex] failed to extract #{tarball}: #{inspect(reason)}. Cache wiped; retry.")
-    end
-  end
-
-  defp validate_entries!(entries, tarball) do
-    result =
-      Enum.reduce_while(entries, :ok, fn entry, :ok ->
-        name = to_string(entry)
-
-        cond do
-          String.starts_with?(name, "/") -> {:halt, {:unsafe, name}}
-          name == ".." or String.contains?(name, "../") -> {:halt, {:unsafe, name}}
-          true -> {:cont, :ok}
-        end
-      end)
-
-    case result do
-      :ok ->
-        :ok
-
       {:unsafe, name} ->
         File.rm(tarball)
 
-        Mix.raise(
-          "[zvex] tarball #{Path.basename(tarball)} contains unsafe entry path #{inspect(name)}. " <>
-            "Cache wiped; set ZVEX_BUILD=true to build from source."
-        )
+        {:error,
+         "tarball #{Path.basename(tarball)} contains unsafe entry path #{inspect(name)} (cache wiped)"}
+
+      {:error, reason} ->
+        File.rm(tarball)
+        {:error, "failed to read #{Path.basename(tarball)}: #{inspect(reason)}"}
     end
+  end
+
+  defp validate_entries(entries) do
+    Enum.reduce_while(entries, :ok, fn entry, :ok ->
+      name = to_string(entry)
+
+      cond do
+        String.starts_with?(name, "/") -> {:halt, {:unsafe, name}}
+        name == ".." or String.contains?(name, "../") -> {:halt, {:unsafe, name}}
+        true -> {:cont, :ok}
+      end
+    end)
   end
 
   defp write_sentinel(version, target) do
