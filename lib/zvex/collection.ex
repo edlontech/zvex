@@ -31,19 +31,20 @@ defmodule Zvex.Collection do
   alias Zvex.Collection.Schema.IndexParams
   alias Zvex.Collection.Stats
 
-  defstruct [:ref, :path, closed: false]
+  defstruct [:ref, :path]
 
   @typedoc """
   An open collection handle.
 
   - `:ref` — opaque NIF resource reference to the underlying zvec collection.
   - `:path` — filesystem path where the collection data is stored.
-  - `:closed` — whether `close/1` has been called on this handle.
+
+  Once `close/1` is called, the underlying resource is closed; further
+  operations through the public API return `{:error, %Zvex.Error.Invalid.FailedPrecondition{}}`.
   """
   @type t :: %__MODULE__{
           ref: reference(),
-          path: String.t(),
-          closed: boolean()
+          path: String.t()
         }
 
   @doc """
@@ -104,10 +105,8 @@ defmodule Zvex.Collection do
   """
   @spec close(t()) :: :ok | {:error, Zvex.Error.t()}
   def close(%__MODULE__{} = collection) do
-    with :ok <- check_open(collection) do
-      Zvex.Native.collection_close(collection.ref)
-      |> Zvex.Error.from_native()
-    end
+    Zvex.Native.collection_close(collection.ref)
+    |> Zvex.Error.from_native()
   end
 
   @doc "Like `close/1` but raises on error."
@@ -124,10 +123,7 @@ defmodule Zvex.Collection do
   """
   @spec drop(t()) :: :ok | {:error, Zvex.Error.t()}
   def drop(%__MODULE__{} = collection) do
-    unless collection.closed do
-      close(collection)
-    end
-
+    _ = close(collection)
     File.rm_rf!(collection.path)
     :ok
   end
@@ -142,10 +138,8 @@ defmodule Zvex.Collection do
   @doc "Flushes buffered writes to persistent storage."
   @spec flush(t()) :: :ok | {:error, Zvex.Error.t()}
   def flush(%__MODULE__{} = collection) do
-    with :ok <- check_open(collection) do
-      Zvex.Native.collection_flush(collection.ref)
-      |> Zvex.Error.from_native()
-    end
+    Zvex.Native.collection_flush(collection.ref)
+    |> Zvex.Error.from_native()
   end
 
   @doc "Like `flush/1` but raises on error."
@@ -163,10 +157,8 @@ defmodule Zvex.Collection do
   """
   @spec optimize(t()) :: :ok | {:error, Zvex.Error.t()}
   def optimize(%__MODULE__{} = collection) do
-    with :ok <- check_open(collection) do
-      Zvex.Native.collection_optimize(collection.ref)
-      |> Zvex.Error.from_native()
-    end
+    Zvex.Native.collection_optimize(collection.ref)
+    |> Zvex.Error.from_native()
   end
 
   @doc "Like `optimize/1` but raises on error."
@@ -179,18 +171,16 @@ defmodule Zvex.Collection do
   @doc "Returns a `Zvex.Collection.Stats` struct with the document count and index information."
   @spec stats(t()) :: {:ok, Stats.t()} | {:error, Zvex.Error.t()}
   def stats(%__MODULE__{} = collection) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_get_stats(collection.ref) do
-        {:ok, stats_map} ->
-          {:ok,
-           %Stats{
-             doc_count: Map.get(stats_map, :doc_count, 0),
-             indexes: Map.get(stats_map, :indexes, [])
-           }}
+    case Zvex.Native.collection_get_stats(collection.ref) do
+      {:ok, stats_map} ->
+        {:ok,
+         %Stats{
+           doc_count: Map.get(stats_map, :doc_count, 0),
+           indexes: Map.get(stats_map, :indexes, [])
+         }}
 
-        {:error, _} = err ->
-          Zvex.Error.from_native(err)
-      end
+      {:error, _} = err ->
+        Zvex.Error.from_native(err)
     end
   end
 
@@ -204,11 +194,9 @@ defmodule Zvex.Collection do
   @doc "Returns the `Zvex.Collection.Schema` of the open collection."
   @spec schema(t()) :: {:ok, Schema.t()} | {:error, Zvex.Error.t()}
   def schema(%__MODULE__{} = collection) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_get_schema(collection.ref) do
-        {:ok, schema_map} -> {:ok, native_map_to_schema(schema_map)}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_get_schema(collection.ref) do
+      {:ok, schema_map} -> {:ok, native_map_to_schema(schema_map)}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -224,11 +212,9 @@ defmodule Zvex.Collection do
   @doc "Returns the collection-level options as a map."
   @spec options(t()) :: {:ok, map()} | {:error, Zvex.Error.t()}
   def options(%__MODULE__{} = collection) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_get_options(collection.ref) do
-        {:ok, opts_map} -> {:ok, opts_map}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_get_options(collection.ref) do
+      {:ok, opts_map} -> {:ok, opts_map}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -277,11 +263,9 @@ defmodule Zvex.Collection do
           {:ok, [String.t()]} | {:error, Zvex.Error.t()}
   def field_names(%__MODULE__{} = collection, category)
       when category in [:all, :forward, :vector, :indexed] do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_field_names(collection.ref, category) do
-        {:ok, names} -> {:ok, names}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_field_names(collection.ref, category) do
+      {:ok, names} -> {:ok, names}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -309,13 +293,11 @@ defmodule Zvex.Collection do
   @spec create_index(t(), String.t(), keyword()) :: :ok | {:error, Zvex.Error.t()}
   def create_index(%__MODULE__{} = collection, field_name, opts)
       when is_binary(field_name) and is_list(opts) do
-    with :ok <- check_open(collection) do
-      index_map = Map.new(opts)
+    index_map = Map.new(opts)
 
-      case Zvex.Native.collection_create_index(collection.ref, field_name, index_map) do
-        :ok -> :ok
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_create_index(collection.ref, field_name, index_map) do
+      :ok -> :ok
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -328,11 +310,9 @@ defmodule Zvex.Collection do
   @doc "Removes the index from `field_name`."
   @spec drop_index(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
   def drop_index(%__MODULE__{} = collection, field_name) when is_binary(field_name) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_drop_index(collection.ref, field_name) do
-        :ok -> :ok
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_drop_index(collection.ref, field_name) do
+      :ok -> :ok
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -357,26 +337,24 @@ defmodule Zvex.Collection do
   @spec add_column(t(), String.t(), atom(), keyword()) :: :ok | {:error, Zvex.Error.t()}
   def add_column(%__MODULE__{} = collection, name, data_type, opts \\ [])
       when is_binary(name) and is_atom(data_type) do
-    with :ok <- check_open(collection) do
-      field_map = %{
-        name: name,
-        data_type: data_type,
-        nullable: Keyword.get(opts, :nullable, false),
-        dimension: Keyword.get(opts, :dimension, 0)
-      }
+    field_map = %{
+      name: name,
+      data_type: data_type,
+      nullable: Keyword.get(opts, :nullable, false),
+      dimension: Keyword.get(opts, :dimension, 0)
+    }
 
-      field_map =
-        case Keyword.get(opts, :index) do
-          nil -> field_map
-          idx_opts when is_list(idx_opts) -> Map.put(field_map, :index, Map.new(idx_opts))
-        end
-
-      expression = Keyword.get(opts, :default)
-
-      case Zvex.Native.collection_add_column(collection.ref, field_map, expression) do
-        :ok -> :ok
-        {:error, _} = err -> Zvex.Error.from_native(err)
+    field_map =
+      case Keyword.get(opts, :index) do
+        nil -> field_map
+        idx_opts when is_list(idx_opts) -> Map.put(field_map, :index, Map.new(idx_opts))
       end
+
+    expression = Keyword.get(opts, :default)
+
+    case Zvex.Native.collection_add_column(collection.ref, field_map, expression) do
+      :ok -> :ok
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -389,11 +367,9 @@ defmodule Zvex.Collection do
   @doc "Removes a column from the collection schema. Existing data for this column is discarded."
   @spec drop_column(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
   def drop_column(%__MODULE__{} = collection, column_name) when is_binary(column_name) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_drop_column(collection.ref, column_name) do
-        :ok -> :ok
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_drop_column(collection.ref, column_name) do
+      :ok -> :ok
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -415,27 +391,25 @@ defmodule Zvex.Collection do
   @spec alter_column(t(), String.t(), keyword()) :: :ok | {:error, Zvex.Error.t()}
   def alter_column(%__MODULE__{} = collection, column_name, opts)
       when is_binary(column_name) and is_list(opts) do
-    with :ok <- check_open(collection) do
-      new_name = Keyword.get(opts, :new_name)
+    new_name = Keyword.get(opts, :new_name)
 
-      new_schema =
-        case Keyword.get(opts, :schema) do
-          nil ->
-            nil
+    new_schema =
+      case Keyword.get(opts, :schema) do
+        nil ->
+          nil
 
-          schema_opts when is_list(schema_opts) ->
-            %{
-              name: Keyword.get(schema_opts, :name, column_name),
-              data_type: Keyword.fetch!(schema_opts, :data_type),
-              nullable: Keyword.get(schema_opts, :nullable, false),
-              dimension: Keyword.get(schema_opts, :dimension, 0)
-            }
-        end
-
-      case Zvex.Native.collection_alter_column(collection.ref, column_name, new_name, new_schema) do
-        :ok -> :ok
-        {:error, _} = err -> Zvex.Error.from_native(err)
+        schema_opts when is_list(schema_opts) ->
+          %{
+            name: Keyword.get(schema_opts, :name, column_name),
+            data_type: Keyword.fetch!(schema_opts, :data_type),
+            nullable: Keyword.get(schema_opts, :nullable, false),
+            dimension: Keyword.get(schema_opts, :dimension, 0)
+          }
       end
+
+    case Zvex.Native.collection_alter_column(collection.ref, column_name, new_name, new_schema) do
+      :ok -> :ok
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -458,13 +432,11 @@ defmodule Zvex.Collection do
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
   def insert(%__MODULE__{} = collection, doc_or_docs) do
-    with :ok <- check_open(collection) do
-      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+    native_maps = Zvex.Document.to_native_maps(doc_or_docs)
 
-      case Zvex.Native.collection_insert(collection.ref, native_maps) do
-        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_insert(collection.ref, native_maps) do
+      {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -484,12 +456,10 @@ defmodule Zvex.Collection do
   @spec insert_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def insert_with_results(%__MODULE__{} = collection, doc_or_docs) do
-    with :ok <- check_open(collection) do
-      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+    native_maps = Zvex.Document.to_native_maps(doc_or_docs)
 
-      Zvex.Native.collection_insert_with_results(collection.ref, native_maps)
-      |> Zvex.Error.from_native()
-    end
+    Zvex.Native.collection_insert_with_results(collection.ref, native_maps)
+    |> Zvex.Error.from_native()
   end
 
   @doc "Like `insert_with_results/2` but raises on error."
@@ -509,13 +479,11 @@ defmodule Zvex.Collection do
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
   def update(%__MODULE__{} = collection, doc_or_docs) do
-    with :ok <- check_open(collection) do
-      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+    native_maps = Zvex.Document.to_native_maps(doc_or_docs)
 
-      case Zvex.Native.collection_update(collection.ref, native_maps) do
-        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_update(collection.ref, native_maps) do
+      {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -530,12 +498,10 @@ defmodule Zvex.Collection do
   @spec update_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def update_with_results(%__MODULE__{} = collection, doc_or_docs) do
-    with :ok <- check_open(collection) do
-      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+    native_maps = Zvex.Document.to_native_maps(doc_or_docs)
 
-      Zvex.Native.collection_update_with_results(collection.ref, native_maps)
-      |> Zvex.Error.from_native()
-    end
+    Zvex.Native.collection_update_with_results(collection.ref, native_maps)
+    |> Zvex.Error.from_native()
   end
 
   @doc "Like `update_with_results/2` but raises on error."
@@ -554,13 +520,11 @@ defmodule Zvex.Collection do
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
   def upsert(%__MODULE__{} = collection, doc_or_docs) do
-    with :ok <- check_open(collection) do
-      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+    native_maps = Zvex.Document.to_native_maps(doc_or_docs)
 
-      case Zvex.Native.collection_upsert(collection.ref, native_maps) do
-        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_upsert(collection.ref, native_maps) do
+      {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -575,12 +539,10 @@ defmodule Zvex.Collection do
   @spec upsert_with_results(t(), Zvex.Document.t() | [Zvex.Document.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def upsert_with_results(%__MODULE__{} = collection, doc_or_docs) do
-    with :ok <- check_open(collection) do
-      native_maps = Zvex.Document.to_native_maps(doc_or_docs)
+    native_maps = Zvex.Document.to_native_maps(doc_or_docs)
 
-      Zvex.Native.collection_upsert_with_results(collection.ref, native_maps)
-      |> Zvex.Error.from_native()
-    end
+    Zvex.Native.collection_upsert_with_results(collection.ref, native_maps)
+    |> Zvex.Error.from_native()
   end
 
   @doc "Like `upsert_with_results/2` but raises on error."
@@ -598,11 +560,9 @@ defmodule Zvex.Collection do
           {:ok, %{success: non_neg_integer(), errors: non_neg_integer()}}
           | {:error, Zvex.Error.t()}
   def delete(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_delete(collection.ref, primary_keys) do
-        {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_delete(collection.ref, primary_keys) do
+      {:ok, {success, errors}} -> {:ok, %{success: success, errors: errors}}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -617,10 +577,8 @@ defmodule Zvex.Collection do
   @spec delete_with_results(t(), [String.t()]) ::
           {:ok, [map()]} | {:error, Zvex.Error.t()}
   def delete_with_results(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
-    with :ok <- check_open(collection) do
-      Zvex.Native.collection_delete_with_results(collection.ref, primary_keys)
-      |> Zvex.Error.from_native()
-    end
+    Zvex.Native.collection_delete_with_results(collection.ref, primary_keys)
+    |> Zvex.Error.from_native()
   end
 
   @doc "Like `delete_with_results/2` but raises on error."
@@ -637,11 +595,9 @@ defmodule Zvex.Collection do
   """
   @spec delete_by_filter(t(), String.t()) :: :ok | {:error, Zvex.Error.t()}
   def delete_by_filter(%__MODULE__{} = collection, filter) when is_binary(filter) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_delete_by_filter(collection.ref, filter) do
-        :ok -> :ok
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_delete_by_filter(collection.ref, filter) do
+      :ok -> :ok
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -659,11 +615,9 @@ defmodule Zvex.Collection do
   """
   @spec fetch(t(), [String.t()]) :: {:ok, [Zvex.Document.t()]} | {:error, Zvex.Error.t()}
   def fetch(%__MODULE__{} = collection, primary_keys) when is_list(primary_keys) do
-    with :ok <- check_open(collection) do
-      case Zvex.Native.collection_fetch(collection.ref, primary_keys) do
-        {:ok, native_docs} -> {:ok, Enum.map(native_docs, &Zvex.Document.from_native_map/1)}
-        {:error, _} = err -> Zvex.Error.from_native(err)
-      end
+    case Zvex.Native.collection_fetch(collection.ref, primary_keys) do
+      {:ok, native_docs} -> {:ok, Enum.map(native_docs, &Zvex.Document.from_native_map/1)}
+      {:error, _} = err -> Zvex.Error.from_native(err)
     end
   end
 
@@ -672,11 +626,6 @@ defmodule Zvex.Collection do
   def fetch!(collection, primary_keys) do
     fetch(collection, primary_keys) |> Zvex.Error.unwrap!()
   end
-
-  defp check_open(%__MODULE__{closed: true}),
-    do: {:error, Zvex.Error.Invalid.Argument.exception(message: "collection is closed")}
-
-  defp check_open(%__MODULE__{closed: false}), do: :ok
 
   defp schema_to_native_map(%Schema{} = schema) do
     %{

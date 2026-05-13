@@ -172,11 +172,10 @@ defmodule Zvex.DocumentIntegrationTest do
     test "insert on closed collection returns error", %{test_dir: test_dir} do
       path = Path.join(test_dir, "closed_coll")
       {:ok, coll} = Collection.create(path, test_schema())
-      Collection.close(coll)
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       doc = build_doc("err-1", [1.0, 2.0, 3.0, 4.0])
-      assert {:error, %Zvex.Error.Invalid.Argument{}} = Collection.insert(coll, doc)
+      assert {:error, %Zvex.Error.Invalid.FailedPrecondition{}} = Collection.insert(coll, doc)
     end
   end
 

@@ -147,8 +147,7 @@ defmodule Zvex.Query do
   @spec execute(t(), Zvex.Collection.t()) ::
           {:ok, [Zvex.Query.Result.t()]} | {:error, Zvex.Error.t()}
   def execute(%__MODULE__{} = query, %Zvex.Collection{} = collection) do
-    with :ok <- validate(query),
-         :ok <- check_collection_open(collection) do
+    with :ok <- validate(query) do
       native_map = to_native_map(query)
 
       case Zvex.Native.collection_query(collection.ref, native_map) do
@@ -175,12 +174,6 @@ defmodule Zvex.Query do
   end
 
   defp validate(%__MODULE__{}), do: :ok
-
-  defp check_collection_open(%Zvex.Collection{closed: true}) do
-    {:error, Zvex.Error.Invalid.Argument.exception(message: "collection is closed")}
-  end
-
-  defp check_collection_open(%Zvex.Collection{}), do: :ok
 
   defp to_native_map(%__MODULE__{} = query) do
     %{

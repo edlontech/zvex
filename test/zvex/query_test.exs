@@ -100,25 +100,17 @@ defmodule Zvex.QueryTest do
   describe "execute/2 validation" do
     test "returns error when field is not set" do
       vec = Vector.from_list([1.0, 2.0], :fp32)
-      coll = %Zvex.Collection{ref: nil, path: "/tmp", closed: false}
+      coll = %Zvex.Collection{ref: nil, path: "/tmp"}
       q = Query.new() |> Query.vector(vec)
       assert {:error, err} = Query.execute(q, coll)
       assert err.message =~ "field"
     end
 
     test "returns error when vector is not set" do
-      coll = %Zvex.Collection{ref: nil, path: "/tmp", closed: false}
+      coll = %Zvex.Collection{ref: nil, path: "/tmp"}
       q = Query.new() |> Query.field("embedding")
       assert {:error, err} = Query.execute(q, coll)
       assert err.message =~ "vector"
-    end
-
-    test "returns error when collection is closed" do
-      vec = Vector.from_list([1.0, 2.0], :fp32)
-      coll = %Zvex.Collection{ref: nil, path: "/tmp", closed: true}
-      q = Query.new() |> Query.field("embedding") |> Query.vector(vec)
-      assert {:error, err} = Query.execute(q, coll)
-      assert err.message =~ "closed"
     end
   end
 end

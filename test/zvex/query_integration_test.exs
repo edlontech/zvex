@@ -224,14 +224,14 @@ defmodule Zvex.QueryIntegrationTest do
     setup [:create_collection]
 
     test "returns error when collection is closed", %{collection: coll} do
-      closed_coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       q =
         Query.new()
         |> Query.field("embedding")
         |> Query.vector([1.0, 0.0, 0.0, 0.0])
 
-      assert {:error, _err} = Query.execute(q, closed_coll)
+      assert {:error, _err} = Query.execute(q, coll)
     end
   end
 

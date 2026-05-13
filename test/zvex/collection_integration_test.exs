@@ -40,8 +40,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns a collection struct", %{test_dir: test_dir} do
       path = collection_path(test_dir)
 
-      assert {:ok, %Collection{path: ^path, closed: false}} =
-               Collection.create(path, minimal_schema())
+      assert {:ok, %Collection{path: ^path}} = Collection.create(path, minimal_schema())
     end
 
     test "creates with indexed vector fields", %{test_dir: test_dir} do
@@ -141,8 +140,7 @@ defmodule Zvex.CollectionIntegrationTest do
       {:ok, coll} = Collection.create(path, minimal_schema())
 
       assert :ok = Collection.close(coll)
-      closed_coll = %{coll | closed: true}
-      assert {:error, _} = Collection.close(closed_coll)
+      assert :ok = Collection.close(coll)
     end
 
     test "post-close NIF calls return error rather than segfault", %{test_dir: test_dir} do
@@ -197,7 +195,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.flush(coll)
     end
@@ -214,7 +212,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.optimize(coll)
     end
@@ -239,7 +237,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.stats(coll)
     end
@@ -290,7 +288,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.schema(coll)
     end
@@ -324,7 +322,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} =
                Collection.create_index(coll, "embedding", type: :hnsw, metric: :cosine)
@@ -349,7 +347,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.drop_index(coll, "embedding")
     end
@@ -396,7 +394,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.add_column(coll, "score", :double, nullable: true)
     end
@@ -424,7 +422,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.drop_column(coll, "score")
     end
@@ -453,7 +451,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.alter_column(coll, "score", new_name: "rating")
     end
@@ -488,7 +486,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.options(coll)
     end
@@ -600,7 +598,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "returns error on closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert {:error, _} = Collection.field_names(coll)
     end
@@ -618,7 +616,7 @@ defmodule Zvex.CollectionIntegrationTest do
     test "drop works on already-closed collection", %{test_dir: test_dir} do
       path = collection_path(test_dir)
       {:ok, coll} = Collection.create(path, minimal_schema())
-      coll = %{coll | closed: true}
+      :ok = Collection.close(coll)
 
       assert :ok = Collection.drop(coll)
       refute File.exists?(path)
