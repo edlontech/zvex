@@ -415,6 +415,7 @@ defmodule Zvex.MixProject do
   defp shared_lib do
     case :os.type() do
       {:unix, :darwin} -> "libzvec_c_api.dylib"
+      {:win32, _} -> "zvec_c_api.dll"
       _ -> "libzvec_c_api.so"
     end
   end

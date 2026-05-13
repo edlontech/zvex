@@ -9,8 +9,13 @@ ZVEC_TAG ?= v$(ZVEX_VERSION)
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 	SHARED_LIB = libzvec_c_api.dylib
+	BUILD_LIB_DIR = lib
+else ifneq (,$(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)))
+	SHARED_LIB = zvec_c_api.dll
+	BUILD_LIB_DIR = bin
 else
 	SHARED_LIB = libzvec_c_api.so
+	BUILD_LIB_DIR = lib
 endif
 
 CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release \
@@ -43,15 +48,15 @@ $(ZVEC_SRC)/CMakeLists.txt:
 	  git clone --depth 1 --branch $(ZVEC_TAG) --recurse-submodules $(ZVEC_REPO) $(ZVEC_SRC); \
 	fi
 
-$(ZVEC_BUILD)/Makefile: $(ZVEC_SRC)/CMakeLists.txt
+$(ZVEC_BUILD)/CMakeCache.txt: $(ZVEC_SRC)/CMakeLists.txt
 	cmake -S $(ZVEC_SRC) -B $(ZVEC_BUILD) $(CMAKE_FLAGS)
 
-$(ZVEC_BUILD)/lib/$(SHARED_LIB): $(ZVEC_BUILD)/Makefile force
+$(ZVEC_BUILD)/$(BUILD_LIB_DIR)/$(SHARED_LIB): $(ZVEC_BUILD)/CMakeCache.txt force
 	cmake --build $(ZVEC_BUILD) --config Release --target zvec_c_api -j $(NPROC)
 
-$(PRIV_DIR)/lib/$(SHARED_LIB): $(ZVEC_BUILD)/lib/$(SHARED_LIB)
+$(PRIV_DIR)/lib/$(SHARED_LIB): $(ZVEC_BUILD)/$(BUILD_LIB_DIR)/$(SHARED_LIB)
 	@mkdir -p $(PRIV_DIR)/lib
-	cp $(ZVEC_BUILD)/lib/$(SHARED_LIB) $(PRIV_DIR)/lib/
+	cp $(ZVEC_BUILD)/$(BUILD_LIB_DIR)/$(SHARED_LIB) $(PRIV_DIR)/lib/
 ifeq ($(UNAME_S),Darwin)
 	install_name_tool -id @rpath/$(SHARED_LIB) $(PRIV_DIR)/lib/$(SHARED_LIB)
 endif

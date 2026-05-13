@@ -36,6 +36,8 @@ end
 
 Other targets (e.g. Windows, FreeBSD, darwin-x86_64, Alpine/musl) fall through to a source build requiring `cmake`, a C/C++ toolchain, and `git`. When building from source, the matching zvec release is fetched from upstream automatically; airgapped users can pre-populate `c_src/zvec` with the desired sources and the Makefile will skip the fetch.
 
+On Windows, the source build must run from a Unix-like shell (MSYS2, Git Bash, or Cygwin) — `cmd.exe` is not supported. The required tools are `make`, `cmake`, `git`, and a MinGW-w64 C/C++ toolchain; under MSYS2 these are installed via the usual `pacman` packages (`mingw-w64-x86_64-toolchain`, `mingw-w64-x86_64-cmake`, `make`, `git`). The build output is `zvec_c_api.dll` in `priv/lib/`.
+
 ### Environment variables
 
 | Variable          | Effect                                                                  |
