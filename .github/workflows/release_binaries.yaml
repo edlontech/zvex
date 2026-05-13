@@ -12,13 +12,13 @@ concurrency:
 jobs:
   build:
     name: Build ${{ matrix.target }}
-    timeout-minutes: 30
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: linux-x86_64-gnu
-            runner: ubuntu-24.04-8-cores-x64
+            runner: ubuntu-24.04
             shared_lib: libzvec_c_api.so
           - target: linux-aarch64-gnu
             runner: ubuntu-22.04-arm
@@ -49,32 +49,69 @@ jobs:
         shell: bash
         run: echo "sha=$(git -C c_src/zvec rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Install build tooling (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+          sudo apt-get install -y mold || echo "mold not available; falling back to default linker"
+
+      - name: Install build tooling (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
           key: ${{ matrix.target }}
-          max-size: 1G
+          max-size: 5G
 
-      - name: Cache CMake build directory
-        uses: actions/cache@v4
+      - name: Compute build cache key
+        id: cache_keys
+        shell: bash
+        run: |
+          echo "primary=cmake-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore CMake build directory
+        id: cmake_cache
+        uses: actions/cache/restore@v4
         with:
           path: _build/zvec
-          key: cmake-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
+          key: ${{ steps.cache_keys.outputs.primary }}
           restore-keys: |
             cmake-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-
             cmake-${{ matrix.target }}-
 
       - name: Configure and build
+        shell: bash
         run: |
-          cmake -S c_src/zvec -B _build/zvec \
+          set -euo pipefail
+          extra=()
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            jobs=$(nproc)
+            if command -v mold >/dev/null 2>&1; then
+              extra+=(-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold)
+            fi
+          else
+            jobs=$(sysctl -n hw.ncpu)
+          fi
+          cmake -S c_src/zvec -B _build/zvec -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DBUILD_C_BINDINGS=ON \
             -DBUILD_PYTHON_BINDINGS=OFF \
             -DBUILD_TOOLS=OFF \
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-          cmake --build _build/zvec --config Release --target zvec_c_api -j
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            "${extra[@]}"
+          cmake --build _build/zvec --config Release --target zvec_c_api -j "$jobs"
+
+      - name: Save CMake build directory
+        if: always() && steps.cmake_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: _build/zvec
+          key: ${{ steps.cache_keys.outputs.primary }}
 
       - name: Stage artifact
         shell: bash
