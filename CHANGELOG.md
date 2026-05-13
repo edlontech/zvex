@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.1](https://github.com/edlontech/zvex/compare/zvex-v0.4.0...zvex-v0.4.1) (2026-05-13)
+
+
+### Features
+
+* Support Windows source build under MSYS2/MinGW ([27f7071](https://github.com/edlontech/zvex/commit/27f70713aa712cea9555903672da58b427b78412))
+
+
+### Bug Fixes
+
+* Fixed Zvec build when including this library ([1f20f3f](https://github.com/edlontech/zvex/commit/1f20f3fd6919648f6f1ba8b8bbffa46e71b7c7ce))
+
 ## [0.4.0](https://github.com/edlontech/zvex/compare/zvex-v0.1.0...zvex-v0.4.0) (2026-05-13)
 
 
