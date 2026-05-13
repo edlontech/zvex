@@ -14,7 +14,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     outputs:
-      zvex_release_created: ${{ steps.release.outputs['.--release_created'] }}
+      zvex_release_created: ${{ steps.release.outputs.release_created }}
       zvec_release_created: ${{ steps.release.outputs['.zvec--release_created'] }}
     steps:
       - uses: actions/create-github-app-token@v2
