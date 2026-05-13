@@ -196,3 +196,38 @@ defmodule Zvex.Query do
     %Zvex.Query.Result{pk: pk, score: score, doc_id: doc_id, fields: field_map}
   end
 end
+
+defimpl Inspect, for: Zvex.Query do
+  import Inspect.Algebra
+
+  def inspect(%Zvex.Query{} = q, opts) do
+    body =
+      [
+        kv("field", q.field, opts),
+        kv("top_k", q.top_k, opts),
+        vector_kv(q.vector),
+        kv("filter", q.filter, opts),
+        kv("params", q.params, opts),
+        list_kv("output_fields", q.output_fields, opts),
+        bool_kv("include_vector", q.include_vector),
+        bool_kv("include_doc_id", q.include_doc_id)
+      ]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.intersperse(", ")
+      |> concat()
+
+    concat(["#Zvex.Query<", body, ">"])
+  end
+
+  defp kv(_, nil, _), do: nil
+  defp kv(label, value, opts), do: concat([label, ": ", to_doc(value, opts)])
+
+  defp list_kv(_, [], _), do: nil
+  defp list_kv(label, value, opts), do: concat([label, ": ", to_doc(value, opts)])
+
+  defp bool_kv(_, false), do: nil
+  defp bool_kv(label, true), do: concat([label, ": true"])
+
+  defp vector_kv(nil), do: nil
+  defp vector_kv(bin), do: concat(["vector: <", to_string(byte_size(bin)), " bytes>"])
+end

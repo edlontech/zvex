@@ -19,3 +19,21 @@ defmodule Zvex.Collection.Stats do
           indexes: [%{name: String.t(), completeness: float()}]
         }
 end
+
+defimpl Inspect, for: Zvex.Collection.Stats do
+  import Inspect.Algebra
+
+  def inspect(%Zvex.Collection.Stats{} = s, opts) do
+    index_names = Enum.map(s.indexes, fn idx -> Map.get(idx, :name) end)
+
+    body =
+      concat([
+        "doc_count: ",
+        to_doc(s.doc_count, opts),
+        ", indexes: ",
+        to_doc(index_names, opts)
+      ])
+
+    concat(["#Zvex.Collection.Stats<", body, ">"])
+  end
+end

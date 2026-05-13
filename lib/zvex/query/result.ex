@@ -22,3 +22,26 @@ defmodule Zvex.Query.Result do
           fields: %{String.t() => {atom(), term()}}
         }
 end
+
+defimpl Inspect, for: Zvex.Query.Result do
+  import Inspect.Algebra
+
+  def inspect(%Zvex.Query.Result{} = r, opts) do
+    field_summary =
+      r.fields
+      |> Enum.sort_by(fn {name, _} -> name end)
+      |> Enum.map(fn {name, {type, _}} -> "#{name}: #{type}" end)
+
+    body =
+      [
+        concat(["pk: ", to_doc(r.pk, opts)]),
+        concat(["score: ", to_doc(r.score, opts)]),
+        concat(["doc_id: ", to_doc(r.doc_id, opts)]),
+        concat(["fields: ", to_doc(field_summary, opts)])
+      ]
+      |> Enum.intersperse(", ")
+      |> concat()
+
+    concat(["#Zvex.Query.Result<", body, ">"])
+  end
+end

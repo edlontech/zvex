@@ -221,3 +221,40 @@ defmodule Zvex.Collection.Schema do
   defp validation_error(message),
     do: {:error, Zvex.Error.Invalid.Argument.exception(message: message)}
 end
+
+defimpl Inspect, for: Zvex.Collection.Schema do
+  import Inspect.Algebra
+
+  def inspect(%Zvex.Collection.Schema{} = s, opts) do
+    field_summaries =
+      Enum.map(s.fields, fn f ->
+        tags =
+          [
+            if(f.primary_key, do: "pk", else: nil),
+            if(f.nullable, do: "nullable", else: nil),
+            if(f.dimension > 0, do: "dim=#{f.dimension}", else: nil)
+          ]
+          |> Enum.reject(&is_nil/1)
+
+        suffix = if tags == [], do: "", else: " [#{Enum.join(tags, ", ")}]"
+        "#{f.name}: #{f.data_type}#{suffix}"
+      end)
+
+    pairs = [{"name", s.name}]
+
+    pairs =
+      if s.max_doc_count_per_segment,
+        do: pairs ++ [{"max_doc_count_per_segment", s.max_doc_count_per_segment}],
+        else: pairs
+
+    pairs = pairs ++ [{"fields", field_summaries}]
+
+    body =
+      pairs
+      |> Enum.map(fn {k, v} -> concat([k, ": ", to_doc(v, opts)]) end)
+      |> Enum.intersperse(", ")
+      |> concat()
+
+    concat(["#Zvex.Collection.Schema<", body, ">"])
+  end
+end

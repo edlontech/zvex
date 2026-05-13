@@ -697,3 +697,11 @@ defmodule Zvex.Collection do
     }
   end
 end
+
+defimpl Inspect, for: Zvex.Collection do
+  import Inspect.Algebra
+
+  def inspect(%Zvex.Collection{path: path}, opts) do
+    concat(["#Zvex.Collection<path: ", to_doc(path, opts), ">"])
+  end
+end

@@ -446,3 +446,23 @@ defmodule Zvex.Vector do
     {indices, values}
   end
 end
+
+defimpl Inspect, for: Zvex.Vector do
+  import Inspect.Algebra
+
+  @sparse_types [:sparse_vector_fp16, :sparse_vector_fp32]
+
+  def inspect(%Zvex.Vector{type: type} = vec, _opts) when type in @sparse_types do
+    concat(["#Zvex.Vector<", to_string(type), ", nnz=", to_string(Zvex.Vector.nnz(vec)), ">"])
+  end
+
+  def inspect(%Zvex.Vector{type: type} = vec, _opts) do
+    concat([
+      "#Zvex.Vector<",
+      to_string(type),
+      ", dim=",
+      to_string(Zvex.Vector.dimension(vec)),
+      ">"
+    ])
+  end
+end

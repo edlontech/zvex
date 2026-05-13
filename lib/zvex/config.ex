@@ -100,3 +100,19 @@ defmodule Zvex.Config do
     |> Map.new()
   end
 end
+
+defimpl Inspect, for: Zvex.Config do
+  import Inspect.Algebra
+
+  def inspect(%Zvex.Config{} = c, opts) do
+    body =
+      c
+      |> Map.from_struct()
+      |> Enum.reject(fn {_, v} -> is_nil(v) end)
+      |> Enum.map(fn {k, v} -> concat([to_string(k), ": ", to_doc(v, opts)]) end)
+      |> Enum.intersperse(", ")
+      |> concat()
+
+    concat(["#Zvex.Config<", body, ">"])
+  end
+end
