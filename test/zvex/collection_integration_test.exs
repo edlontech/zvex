@@ -144,6 +144,37 @@ defmodule Zvex.CollectionIntegrationTest do
       closed_coll = %{coll | closed: true}
       assert {:error, _} = Collection.close(closed_coll)
     end
+
+    test "post-close NIF calls return error rather than segfault", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+      :ok = Collection.close(coll)
+
+      assert {:error, {:failed_precondition, _}} = Zvex.Native.collection_flush(coll.ref)
+      assert {:error, {:failed_precondition, _}} = Zvex.Native.collection_optimize(coll.ref)
+      assert {:error, {:failed_precondition, _}} = Zvex.Native.collection_fetch(coll.ref, ["x"])
+      assert :ok = Zvex.Native.collection_close(coll.ref)
+    end
+
+    test "concurrent close vs ops do not crash the BEAM", %{test_dir: test_dir} do
+      path = collection_path(test_dir)
+      {:ok, coll} = Collection.create(path, minimal_schema())
+
+      tasks =
+        for i <- 1..50 do
+          Task.async(fn ->
+            case rem(i, 4) do
+              0 -> Zvex.Native.collection_close(coll.ref)
+              1 -> Zvex.Native.collection_flush(coll.ref)
+              2 -> Zvex.Native.collection_optimize(coll.ref)
+              3 -> Zvex.Native.collection_fetch(coll.ref, ["x"])
+            end
+          end)
+        end
+
+      results = Task.await_many(tasks, 10_000)
+      assert length(results) == 50
+    end
   end
 
   describe "close!/1" do

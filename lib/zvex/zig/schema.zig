@@ -252,15 +252,16 @@ pub fn collection_open(path_term: beam.term, opts_map: beam.term) beam.term {
 }
 
 pub fn collection_get_schema(resource_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     zvec.zvec_clear_error();
     var c_schema: ?*zvec.zvec_collection_schema_t = null;
-    const rc = zvec.zvec_collection_get_schema(data.ptr, &c_schema);
+    const rc = zvec.zvec_collection_get_schema(ptr, &c_schema);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);

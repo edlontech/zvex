@@ -141,6 +141,12 @@ fn set_doc_field(doc: *zvec.zvec_doc_t, name_cstr: [*:0]const u8, type_term: bea
         if (bin.size < 8) return false;
         const data: [*]const u8 = @ptrCast(bin.data);
         if (data[4] != 0 or data[5] != 0 or data[6] != 0 or data[7] != 0) return false;
+
+        const nnz = std.mem.readInt(u32, data[0..4], .little);
+        const val_size: usize = if (dt == zvec.ZVEC_DATA_TYPE_SPARSE_VECTOR_FP32) 4 else 2;
+        const expected_body = @as(usize, nnz) * 4 + @as(usize, nnz) * val_size;
+        if (bin.size - 8 != expected_body) return false;
+
         var c_buf: [65536]u8 = undefined;
         const payload_size = bin.size - 4;
         if (payload_size > c_buf.len) return false;

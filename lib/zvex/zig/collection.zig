@@ -7,34 +7,19 @@ const resource = @import("resource.zig");
 const schema = @import("schema.zig");
 
 pub fn collection_close(resource_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    if (@cmpxchgStrong(bool, &res.__payload.*.closed, false, true, .seq_cst, .seq_cst) != null) {
-        return beam.make(.ok, .{});
-    }
-
-    zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_close(res.__payload.*.ptr);
-
-    if (rc != zvec.ZVEC_OK) {
-        return common.make_error_result(rc);
-    }
-
-    return beam.make(.ok, .{});
+    return resource.close_collection(resource_term);
 }
 
 pub fn collection_flush(resource_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_flush(data.ptr);
+    const rc = zvec.zvec_collection_flush(ptr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -44,15 +29,15 @@ pub fn collection_flush(resource_term: beam.term) beam.term {
 }
 
 pub fn collection_optimize(resource_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_optimize(data.ptr);
+    const rc = zvec.zvec_collection_optimize(ptr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -62,16 +47,16 @@ pub fn collection_optimize(resource_term: beam.term) beam.term {
 }
 
 pub fn collection_get_stats(resource_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     zvec.zvec_clear_error();
     var stats: ?*zvec.zvec_collection_stats_t = null;
-    const rc = zvec.zvec_collection_get_stats(data.ptr, &stats);
+    const rc = zvec.zvec_collection_get_stats(ptr, &stats);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -118,12 +103,12 @@ pub fn collection_get_stats(resource_term: beam.term) beam.term {
 }
 
 pub fn collection_insert(resource_term: beam.term, docs_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -132,7 +117,7 @@ pub fn collection_insert(resource_term: beam.term, docs_list: beam.term) beam.te
     zvec.zvec_clear_error();
     var success_count: usize = 0;
     var error_count: usize = 0;
-    const rc = zvec.zvec_collection_insert(data.ptr, @ptrCast(&doc_ptrs_buf), doc_count, &success_count, &error_count);
+    const rc = zvec.zvec_collection_insert(ptr, @ptrCast(&doc_ptrs_buf), doc_count, &success_count, &error_count);
 
     document.free_built_docs(&doc_ptrs_buf, doc_count);
 
@@ -144,12 +129,12 @@ pub fn collection_insert(resource_term: beam.term, docs_list: beam.term) beam.te
 }
 
 pub fn collection_insert_with_results(resource_term: beam.term, docs_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -158,7 +143,7 @@ pub fn collection_insert_with_results(resource_term: beam.term, docs_list: beam.
     zvec.zvec_clear_error();
     var results: [*c]zvec.zvec_write_result_t = undefined;
     var result_count: usize = 0;
-    const rc = zvec.zvec_collection_insert_with_results(data.ptr, @ptrCast(&doc_ptrs_buf), doc_count, @ptrCast(&results), &result_count);
+    const rc = zvec.zvec_collection_insert_with_results(ptr, @ptrCast(&doc_ptrs_buf), doc_count, @ptrCast(&results), &result_count);
 
     document.free_built_docs(&doc_ptrs_buf, doc_count);
 
@@ -173,12 +158,12 @@ pub fn collection_insert_with_results(resource_term: beam.term, docs_list: beam.
 }
 
 pub fn collection_update(resource_term: beam.term, docs_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -187,7 +172,7 @@ pub fn collection_update(resource_term: beam.term, docs_list: beam.term) beam.te
     zvec.zvec_clear_error();
     var success_count: usize = 0;
     var error_count: usize = 0;
-    const rc = zvec.zvec_collection_update(data.ptr, @ptrCast(&doc_ptrs_buf), doc_count, &success_count, &error_count);
+    const rc = zvec.zvec_collection_update(ptr, @ptrCast(&doc_ptrs_buf), doc_count, &success_count, &error_count);
 
     document.free_built_docs(&doc_ptrs_buf, doc_count);
 
@@ -199,12 +184,12 @@ pub fn collection_update(resource_term: beam.term, docs_list: beam.term) beam.te
 }
 
 pub fn collection_update_with_results(resource_term: beam.term, docs_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -213,7 +198,7 @@ pub fn collection_update_with_results(resource_term: beam.term, docs_list: beam.
     zvec.zvec_clear_error();
     var results: [*c]zvec.zvec_write_result_t = undefined;
     var result_count: usize = 0;
-    const rc = zvec.zvec_collection_update_with_results(data.ptr, @ptrCast(&doc_ptrs_buf), doc_count, @ptrCast(&results), &result_count);
+    const rc = zvec.zvec_collection_update_with_results(ptr, @ptrCast(&doc_ptrs_buf), doc_count, @ptrCast(&results), &result_count);
 
     document.free_built_docs(&doc_ptrs_buf, doc_count);
 
@@ -228,12 +213,12 @@ pub fn collection_update_with_results(resource_term: beam.term, docs_list: beam.
 }
 
 pub fn collection_upsert(resource_term: beam.term, docs_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -242,7 +227,7 @@ pub fn collection_upsert(resource_term: beam.term, docs_list: beam.term) beam.te
     zvec.zvec_clear_error();
     var success_count: usize = 0;
     var error_count: usize = 0;
-    const rc = zvec.zvec_collection_upsert(data.ptr, @ptrCast(&doc_ptrs_buf), doc_count, &success_count, &error_count);
+    const rc = zvec.zvec_collection_upsert(ptr, @ptrCast(&doc_ptrs_buf), doc_count, &success_count, &error_count);
 
     document.free_built_docs(&doc_ptrs_buf, doc_count);
 
@@ -254,12 +239,12 @@ pub fn collection_upsert(resource_term: beam.term, docs_list: beam.term) beam.te
 }
 
 pub fn collection_upsert_with_results(resource_term: beam.term, docs_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var doc_ptrs_buf: [document.MAX_DOCS]?*zvec.zvec_doc_t = undefined;
     const doc_count = document.build_doc_array(docs_list, &doc_ptrs_buf, document.MAX_DOCS) orelse
@@ -268,7 +253,7 @@ pub fn collection_upsert_with_results(resource_term: beam.term, docs_list: beam.
     zvec.zvec_clear_error();
     var results: [*c]zvec.zvec_write_result_t = undefined;
     var result_count: usize = 0;
-    const rc = zvec.zvec_collection_upsert_with_results(data.ptr, @ptrCast(&doc_ptrs_buf), doc_count, @ptrCast(&results), &result_count);
+    const rc = zvec.zvec_collection_upsert_with_results(ptr, @ptrCast(&doc_ptrs_buf), doc_count, @ptrCast(&results), &result_count);
 
     document.free_built_docs(&doc_ptrs_buf, doc_count);
 
@@ -283,12 +268,12 @@ pub fn collection_upsert_with_results(resource_term: beam.term, docs_list: beam.
 }
 
 pub fn collection_delete(resource_term: beam.term, pks_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var pks = document.build_pk_array(pks_list) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build primary key array" } }, .{});
@@ -297,7 +282,7 @@ pub fn collection_delete(resource_term: beam.term, pks_list: beam.term) beam.ter
     zvec.zvec_clear_error();
     var success_count: usize = 0;
     var error_count: usize = 0;
-    const rc = zvec.zvec_collection_delete(data.ptr, @ptrCast(pks.ptrs), pks.count, &success_count, &error_count);
+    const rc = zvec.zvec_collection_delete(ptr, @ptrCast(pks.ptrs), pks.count, &success_count, &error_count);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -307,12 +292,12 @@ pub fn collection_delete(resource_term: beam.term, pks_list: beam.term) beam.ter
 }
 
 pub fn collection_delete_with_results(resource_term: beam.term, pks_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var pks = document.build_pk_array(pks_list) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build primary key array" } }, .{});
@@ -321,7 +306,7 @@ pub fn collection_delete_with_results(resource_term: beam.term, pks_list: beam.t
     zvec.zvec_clear_error();
     var results: [*c]zvec.zvec_write_result_t = undefined;
     var result_count: usize = 0;
-    const rc = zvec.zvec_collection_delete_with_results(data.ptr, @ptrCast(pks.ptrs), pks.count, @ptrCast(&results), &result_count);
+    const rc = zvec.zvec_collection_delete_with_results(ptr, @ptrCast(pks.ptrs), pks.count, @ptrCast(&results), &result_count);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -334,19 +319,23 @@ pub fn collection_delete_with_results(resource_term: beam.term, pks_list: beam.t
 }
 
 pub fn collection_delete_by_filter(resource_term: beam.term, filter_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var filter_buf: [65536]u8 = undefined;
-    const filter_cstr = common.get_binary_as_cstr(filter_term, &filter_buf) orelse
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid filter expression" } }, .{});
+    const filter_cstr = common.copy_binary_as_cstr(filter_term, &filter_buf) catch |err|
+        return common.cstr_error_term(err, switch (err) {
+            common.CstrError.NotBinary => "filter must be a binary",
+            common.CstrError.ContainsNul => "filter contains a NUL byte",
+            common.CstrError.TooLong => "filter expression exceeds 65535 bytes",
+        });
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_delete_by_filter(data.ptr, filter_cstr);
+    const rc = zvec.zvec_collection_delete_by_filter(ptr, filter_cstr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -356,12 +345,12 @@ pub fn collection_delete_by_filter(resource_term: beam.term, filter_term: beam.t
 }
 
 pub fn collection_create_index(resource_term: beam.term, field_name_term: beam.term, index_map: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
@@ -375,7 +364,7 @@ pub fn collection_create_index(resource_term: beam.term, field_name_term: beam.t
     defer zvec.zvec_index_params_destroy(params_ptr);
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_create_index(data.ptr, field_cstr, params_ptr);
+    const rc = zvec.zvec_collection_create_index(ptr, field_cstr, params_ptr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -385,19 +374,19 @@ pub fn collection_create_index(resource_term: beam.term, field_name_term: beam.t
 }
 
 pub fn collection_drop_index(resource_term: beam.term, field_name_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid field name" } }, .{});
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_drop_index(data.ptr, field_cstr);
+    const rc = zvec.zvec_collection_drop_index(ptr, field_cstr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -407,12 +396,12 @@ pub fn collection_drop_index(resource_term: beam.term, field_name_term: beam.ter
 }
 
 pub fn collection_add_column(resource_term: beam.term, field_map: beam.term, expression_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     const built = schema.build_field_schema(field_map);
     if (built.field_schema == null) return built.result;
@@ -425,7 +414,7 @@ pub fn collection_add_column(resource_term: beam.term, field_map: beam.term, exp
         common.get_binary_as_cstr(expression_term, &expr_buf);
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_add_column(data.ptr, built.field_schema, expr_cstr);
+    const rc = zvec.zvec_collection_add_column(ptr, built.field_schema, expr_cstr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -435,19 +424,19 @@ pub fn collection_add_column(resource_term: beam.term, field_map: beam.term, exp
 }
 
 pub fn collection_drop_column(resource_term: beam.term, column_name_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var name_buf: [4096]u8 = undefined;
     const name_cstr = common.get_binary_as_cstr(column_name_term, &name_buf) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid column name" } }, .{});
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_drop_column(data.ptr, name_cstr);
+    const rc = zvec.zvec_collection_drop_column(ptr, name_cstr);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -457,12 +446,12 @@ pub fn collection_drop_column(resource_term: beam.term, column_name_term: beam.t
 }
 
 pub fn collection_alter_column(resource_term: beam.term, column_name_term: beam.term, new_name_term: beam.term, new_schema_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var col_buf: [4096]u8 = undefined;
     const col_cstr = common.get_binary_as_cstr(column_name_term, &col_buf) orelse
@@ -485,7 +474,7 @@ pub fn collection_alter_column(resource_term: beam.term, column_name_term: beam.
     defer if (new_field_schema) |fs| zvec.zvec_field_schema_destroy(fs);
 
     zvec.zvec_clear_error();
-    const rc = zvec.zvec_collection_alter_column(data.ptr, col_cstr, new_name_cstr, new_field_schema);
+    const rc = zvec.zvec_collection_alter_column(ptr, col_cstr, new_name_cstr, new_field_schema);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -495,16 +484,16 @@ pub fn collection_alter_column(resource_term: beam.term, column_name_term: beam.
 }
 
 pub fn collection_get_options(resource_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     zvec.zvec_clear_error();
     var opts: ?*zvec.zvec_collection_options_t = null;
-    const rc = zvec.zvec_collection_get_options(data.ptr, &opts);
+    const rc = zvec.zvec_collection_get_options(ptr, &opts);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -528,12 +517,12 @@ pub fn collection_get_options(resource_term: beam.term) beam.term {
 }
 
 pub fn collection_has_field(resource_term: beam.term, field_name_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
@@ -541,7 +530,7 @@ pub fn collection_has_field(resource_term: beam.term, field_name_term: beam.term
 
     zvec.zvec_clear_error();
     var c_schema: ?*zvec.zvec_collection_schema_t = null;
-    const rc = zvec.zvec_collection_get_schema(data.ptr, &c_schema);
+    const rc = zvec.zvec_collection_get_schema(ptr, &c_schema);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -556,12 +545,12 @@ pub fn collection_has_field(resource_term: beam.term, field_name_term: beam.term
 }
 
 pub fn collection_has_index(resource_term: beam.term, field_name_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var field_buf: [4096]u8 = undefined;
     const field_cstr = common.get_binary_as_cstr(field_name_term, &field_buf) orelse
@@ -569,7 +558,7 @@ pub fn collection_has_index(resource_term: beam.term, field_name_term: beam.term
 
     zvec.zvec_clear_error();
     var c_schema: ?*zvec.zvec_collection_schema_t = null;
-    const rc = zvec.zvec_collection_get_schema(data.ptr, &c_schema);
+    const rc = zvec.zvec_collection_get_schema(ptr, &c_schema);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);
@@ -584,16 +573,16 @@ pub fn collection_has_index(resource_term: beam.term, field_name_term: beam.term
 }
 
 pub fn collection_field_names(resource_term: beam.term, category_term: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     zvec.zvec_clear_error();
     var c_schema: ?*zvec.zvec_collection_schema_t = null;
-    const schema_rc = zvec.zvec_collection_get_schema(data.ptr, &c_schema);
+    const schema_rc = zvec.zvec_collection_get_schema(ptr, &c_schema);
 
     if (schema_rc != zvec.ZVEC_OK) {
         return common.make_error_result(schema_rc);
@@ -657,12 +646,12 @@ pub fn collection_field_names(resource_term: beam.term, category_term: beam.term
 }
 
 pub fn collection_fetch(resource_term: beam.term, pks_list: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const ptr = guard.ptr;
 
     var pks = document.build_pk_array(pks_list) orelse
         return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "failed to build primary key array" } }, .{});
@@ -671,7 +660,7 @@ pub fn collection_fetch(resource_term: beam.term, pks_list: beam.term) beam.term
     zvec.zvec_clear_error();
     var result_docs: [*c]?*zvec.zvec_doc_t = undefined;
     var found_count: usize = 0;
-    const rc = zvec.zvec_collection_fetch(data.ptr, @ptrCast(pks.ptrs), pks.count, @ptrCast(&result_docs), &found_count);
+    const rc = zvec.zvec_collection_fetch(ptr, @ptrCast(pks.ptrs), pks.count, @ptrCast(&result_docs), &found_count);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);

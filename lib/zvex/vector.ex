@@ -205,8 +205,21 @@ defmodule Zvex.Vector do
   defp pack(list, :fp32), do: Enum.reduce(list, <<>>, &(&2 <> <<&1::native-float-32>>))
   defp pack(list, :fp64), do: Enum.reduce(list, <<>>, &(&2 <> <<&1::native-float-64>>))
   defp pack(list, :fp16), do: Enum.reduce(list, <<>>, &(&2 <> encode_fp16(&1)))
-  defp pack(list, :int8), do: Enum.reduce(list, <<>>, &(&2 <> <<&1::native-signed-8>>))
-  defp pack(list, :int16), do: Enum.reduce(list, <<>>, &(&2 <> <<&1::native-signed-16>>))
+
+  defp pack(list, :int8) do
+    Enum.reduce(list, <<>>, fn
+      v, acc when is_integer(v) and v >= -128 and v <= 127 -> acc <> <<v::native-signed-8>>
+      v, _ -> raise ArgumentError, "int8 value out of range [-128, 127]: #{inspect(v)}"
+    end)
+  end
+
+  defp pack(list, :int16) do
+    Enum.reduce(list, <<>>, fn
+      v, acc when is_integer(v) and v >= -32_768 and v <= 32_767 -> acc <> <<v::native-signed-16>>
+      v, _ -> raise ArgumentError, "int16 value out of range [-32768, 32767]: #{inspect(v)}"
+    end)
+  end
+
   defp pack(list, :int4), do: pack_nibbles(list)
   defp pack(list, :binary32), do: pack_bits(list)
   defp pack(list, :binary64), do: pack_bits(list)
@@ -245,10 +258,11 @@ defmodule Zvex.Vector do
   defp pack_nibbles(list) do
     list
     |> Enum.chunk_every(2, 2, [0])
-    |> Enum.reduce(<<>>, fn
-      [hi, lo], acc -> acc <> <<hi::4, lo::4>>
-    end)
+    |> Enum.reduce(<<>>, fn [hi, lo], acc -> acc <> <<nibble!(hi)::4, nibble!(lo)::4>> end)
   end
+
+  defp nibble!(v) when is_integer(v) and v >= 0 and v <= 15, do: v
+  defp nibble!(v), do: raise(ArgumentError, "int4 value out of range [0, 15]: #{inspect(v)}")
 
   defp unpack_nibbles(<<>>, acc), do: Enum.reverse(acc)
 
@@ -261,10 +275,14 @@ defmodule Zvex.Vector do
     list
     |> Enum.chunk_every(8, 8, List.duplicate(0, 8))
     |> Enum.reduce(<<>>, fn bits, acc ->
-      byte = Enum.reduce(bits, 0, fn bit, b -> b * 2 + bit end)
+      byte = Enum.reduce(bits, 0, fn bit, b -> b * 2 + bit!(bit) end)
       acc <> <<byte::8>>
     end)
   end
+
+  defp bit!(0), do: 0
+  defp bit!(1), do: 1
+  defp bit!(v), do: raise(ArgumentError, "binary-vector bit must be 0 or 1, got: #{inspect(v)}")
 
   defp unpack_bits(<<>>, acc), do: Enum.reverse(acc) |> List.flatten()
 

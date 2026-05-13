@@ -68,8 +68,30 @@ pub fn get_binary_as_cstr(term_val: beam.term, out_buf: []u8) ?[*:0]const u8 {
     if (e.enif_inspect_binary(beam.context.env, term_val.v, &bin) == 0) return null;
     if (bin.size >= out_buf.len) return null;
     const data_ptr: [*]const u8 = @ptrCast(bin.data);
+    if (std.mem.indexOfScalar(u8, data_ptr[0..bin.size], 0) != null) return null;
     @memcpy(out_buf[0..bin.size], data_ptr[0..bin.size]);
     out_buf[bin.size] = 0;
     return @ptrCast(out_buf[0..bin.size :0]);
+}
+
+pub const CstrError = error{ NotBinary, ContainsNul, TooLong };
+
+pub fn copy_binary_as_cstr(term_val: beam.term, out_buf: []u8) CstrError![*:0]const u8 {
+    var bin: e.ErlNifBinary = undefined;
+    if (e.enif_inspect_binary(beam.context.env, term_val.v, &bin) == 0) return CstrError.NotBinary;
+    if (bin.size >= out_buf.len) return CstrError.TooLong;
+    const data_ptr: [*]const u8 = @ptrCast(bin.data);
+    if (std.mem.indexOfScalar(u8, data_ptr[0..bin.size], 0) != null) return CstrError.ContainsNul;
+    @memcpy(out_buf[0..bin.size], data_ptr[0..bin.size]);
+    out_buf[bin.size] = 0;
+    return @ptrCast(out_buf[0..bin.size :0]);
+}
+
+pub fn cstr_error_term(err: CstrError, what: []const u8) beam.term {
+    return switch (err) {
+        CstrError.NotBinary => beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), beam.make(what, .{}) } }, .{}),
+        CstrError.ContainsNul => beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), beam.make(what, .{}) } }, .{}),
+        CstrError.TooLong => beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), beam.make(what, .{}) } }, .{}),
+    };
 }
 

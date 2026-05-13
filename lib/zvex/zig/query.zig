@@ -7,12 +7,12 @@ const document = @import("document.zig");
 const resource = @import("resource.zig");
 
 pub fn collection_query(resource_term: beam.term, query_map: beam.term) beam.term {
-    var res: resource.CollectionResource = undefined;
-    res.get(resource_term, .{ .released = false }) catch
-        return beam.make(.{ .@"error", .{ beam.make(.invalid_argument, .{}), "invalid collection resource" } }, .{});
-
-    const data = res.unpack();
-
+    var guard = switch (resource.open_collection(resource_term)) {
+        .err => |err| return err,
+        .ok => |g| g,
+    };
+    defer guard.release();
+    const coll_ptr = guard.ptr;
 
     const query = zvec.zvec_vector_query_create() orelse
         return beam.make(.{ .@"error", .{ beam.make(.resource_exhausted, .{}), "failed to allocate query" } }, .{});
@@ -62,13 +62,19 @@ pub fn collection_query(resource_term: beam.term, query_map: beam.term) beam.ter
     if (common.get_map_value(query_map, "filter")) |filter_term| {
         if (!common.atom_eql(filter_term, "nil")) {
             var filter_buf: [65536]u8 = undefined;
-            if (common.get_binary_as_cstr(filter_term, &filter_buf)) |filter_cstr| {
-                zvec.zvec_clear_error();
-                const rc = zvec.zvec_vector_query_set_filter(query, filter_cstr);
-                if (rc != zvec.ZVEC_OK) {
-                    zvec.zvec_vector_query_destroy(query);
-                    return common.make_error_result(rc);
-                }
+            const filter_cstr = common.copy_binary_as_cstr(filter_term, &filter_buf) catch |err| {
+                zvec.zvec_vector_query_destroy(query);
+                return common.cstr_error_term(err, switch (err) {
+                    common.CstrError.NotBinary => "filter must be a binary or :nil",
+                    common.CstrError.ContainsNul => "filter contains a NUL byte",
+                    common.CstrError.TooLong => "filter expression exceeds 65535 bytes",
+                });
+            };
+            zvec.zvec_clear_error();
+            const rc = zvec.zvec_vector_query_set_filter(query, filter_cstr);
+            if (rc != zvec.ZVEC_OK) {
+                zvec.zvec_vector_query_destroy(query);
+                return common.make_error_result(rc);
             }
         }
     }
@@ -183,7 +189,7 @@ pub fn collection_query(resource_term: beam.term, query_map: beam.term) beam.ter
     zvec.zvec_clear_error();
     var result_docs: [*c]?*zvec.zvec_doc_t = undefined;
     var result_count: usize = 0;
-    const rc = zvec.zvec_collection_query(data.ptr, query, @ptrCast(&result_docs), &result_count);
+    const rc = zvec.zvec_collection_query(coll_ptr, query, @ptrCast(&result_docs), &result_count);
 
     if (rc != zvec.ZVEC_OK) {
         zvec.zvec_vector_query_destroy(query);
