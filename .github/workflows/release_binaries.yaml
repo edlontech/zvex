@@ -103,7 +103,7 @@ jobs:
             -DBUILD_PYTHON_BINDINGS=OFF \
             -DBUILD_TOOLS=OFF \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-            "${extra[@]}"
+            ${extra[@]+"${extra[@]}"}
           cmake --build _build/zvec --config Release --target zvec_c_api -j "$jobs"
 
       - name: Save CMake build directory
