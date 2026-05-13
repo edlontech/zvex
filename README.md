@@ -34,14 +34,16 @@ end
 - `linux-aarch64-gnu`
 - `darwin-aarch64` (Apple Silicon)
 
-Other targets (e.g. Windows, FreeBSD, darwin-x86_64, Alpine/musl) fall through to a source build requiring `cmake` + a C++ toolchain + the `c_src/zvec` git submodule.
+Other targets (e.g. Windows, FreeBSD, darwin-x86_64, Alpine/musl) fall through to a source build requiring `cmake`, a C/C++ toolchain, and `git`. When building from source, the matching zvec release is fetched from upstream automatically; airgapped users can pre-populate `c_src/zvec` with the desired sources and the Makefile will skip the fetch.
 
 ### Environment variables
 
 | Variable          | Effect                                                                  |
 |-------------------|-------------------------------------------------------------------------|
-| `ZVEX_BUILD=true` | Skip download, build `libzvec_c_api` from the vendored submodule.       |
+| `ZVEX_BUILD=true` | Skip the precompiled download and build `libzvec_c_api` from source.    |
 | `ZVEX_BUILD_URL`  | Override the download prefix (private mirrors, airgapped environments). |
+| `ZVEC_REPO`       | Override the upstream zvec git URL used for source fetches.             |
+| `ZVEC_TAG`        | Override the zvec git tag/ref fetched when building from source.        |
 
 ## Quick Start
 

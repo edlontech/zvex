@@ -19,6 +19,7 @@ defmodule Zvex.MixProject do
       compilers: [:zvex_precompiled, :elixir_make] ++ Mix.compilers(),
       make_targets: ["all"],
       make_clean: ["clean"],
+      make_env: %{"ZVEX_VERSION" => @zvec_version},
       docs: docs(),
       dialyzer: [
         plt_core_path: "_plts/core"
@@ -198,7 +199,7 @@ defmodule Zvex.MixProject do
           :unsupported ->
             Mix.shell().info(
               "[zvex] no precompiled binary for this target — building from source " <>
-                "(requires c_src/zvec submodule and a working toolchain)"
+                "(requires cmake, a working C/C++ toolchain, and git to fetch zvec)"
             )
 
             {:noop, []}
