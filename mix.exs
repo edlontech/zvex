@@ -168,7 +168,7 @@ defmodule Zvex.MixProject do
   defp package() do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => "https://github.com/edlontech/zvec"},
+      links: %{"GitHub" => "https://github.com/edlontech/zvex"},
       files: ~w(lib mix.exs Makefile README.md CHANGELOG.md LICENSE .formatter.exs),
       exclude_patterns: [~r/\.Elixir\..*\.Native\.zig$/]
     ]
