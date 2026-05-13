@@ -127,6 +127,7 @@ defmodule Zvex.MixProject do
     [
       {:bandit, "~> 1.8", only: :dev, runtime: false},
       {:benchee, "~> 1.0", only: :dev},
+      {:castore, "~> 1.0"},
       {:benchee_markdown, "~> 0.3", only: :dev},
       {:benchee_json, "~> 1.0", only: :dev},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
@@ -290,7 +291,19 @@ defmodule Zvex.MixProject do
     {:ok, _} = Application.ensure_all_started(:ssl)
 
     request = {String.to_charlist(url), []}
-    http_opts = [ssl: [verify: :verify_peer, cacerts: :public_key.cacerts_get()]]
+
+    http_opts = [
+      ssl: [
+        verify: :verify_peer,
+        cacertfile: String.to_charlist(CAStore.file_path()),
+        depth: 4,
+        customize_hostname_check: [
+          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+        ]
+      ],
+      autoredirect: true
+    ]
+
     opts = [stream: String.to_charlist(dest)]
 
     case :httpc.request(:get, request, http_opts, opts) do
