@@ -12,7 +12,7 @@ defmodule Zvex.MixProject do
       zvec_version: @zvec_version,
       description: description(),
       package: package(),
-      version: "0.4.0",
+      version: "0.4.1",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
