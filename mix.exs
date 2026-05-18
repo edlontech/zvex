@@ -74,29 +74,34 @@ defmodule Zvex.MixProject do
   defp force_build?, do: System.get_env("ZVEX_BUILD") in ["1", "true"]
 
   defp precompiled_url_reachable? do
-    {:ok, _} = Application.ensure_all_started(:inets)
-    {:ok, _} = Application.ensure_all_started(:ssl)
-    {:ok, _} = Application.ensure_all_started(:public_key)
+    with {:ok, _} <- Application.ensure_all_started(:inets),
+         {:ok, _} <- Application.ensure_all_started(:ssl),
+         {:ok, _} <- Application.ensure_all_started(:public_key),
+         true <- Code.ensure_loaded?(:public_key),
+         true <- function_exported?(:public_key, :cacerts_get, 0),
+         true <- function_exported?(:public_key, :pkix_verify_hostname_match_fun, 1) do
+      url = String.to_charlist(precompiled_url())
+      headers = [{~c"user-agent", ~c"zvex-mix"}]
 
-    url = String.to_charlist(precompiled_url())
-    headers = [{~c"user-agent", ~c"zvex-mix"}]
+      http_options = [
+        {:ssl,
+         [
+           verify: :verify_peer,
+           cacerts: :public_key.cacerts_get(),
+           depth: 4,
+           customize_hostname_check: [
+             match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+           ]
+         ]},
+        {:connect_timeout, 2000},
+        {:timeout, 3000}
+      ]
 
-    http_options = [
-      {:ssl,
-       [
-         verify: :verify_peer,
-         cacerts: :public_key.cacerts_get(),
-         depth: 4,
-         customize_hostname_check: [
-           match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-         ]
-       ]},
-      {:connect_timeout, 2000},
-      {:timeout, 3000}
-    ]
-
-    case :httpc.request(:head, {url, headers}, http_options, []) do
-      {:ok, {{_, status, _}, _, _}} when status in [200, 301, 302, 303, 307, 308] -> true
+      case :httpc.request(:head, {url, headers}, http_options, []) do
+        {:ok, {{_, status, _}, _, _}} when status in [200, 301, 302, 303, 307, 308] -> true
+        _ -> false
+      end
+    else
       _ -> false
     end
   end
