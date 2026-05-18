@@ -16,6 +16,27 @@ defmodule ZiglerPrecompiled.Config do
     max_retries: 3
   ]
 
+  @type base_url ::
+          {String.t(), [{String.t(), String.t()}]}
+          | {module(), atom()}
+
+  @type t :: %__MODULE__{
+          otp_app: atom(),
+          module: module(),
+          base_url: base_url(),
+          version: String.t(),
+          module_name: String.t() | nil,
+          base_cache_dir: Path.t() | nil,
+          load_data: term(),
+          force_build?: boolean(),
+          targets: [String.t()],
+          nifs: keyword(),
+          variants: %{
+            optional(String.t()) => %{optional(atom()) => (-> term()) | (term() -> term())}
+          },
+          max_retries: 0..15
+        }
+
   @default_targets ~w(
     aarch64-linux-gnu
     aarch64-linux-musl
@@ -31,8 +52,10 @@ defmodule ZiglerPrecompiled.Config do
     x86-windows-gnu
   )
 
+  @doc false
   def default_targets, do: @default_targets
 
+  @doc false
   def new(opts) do
     version = Keyword.fetch!(opts, :version)
     otp_app = opts |> Keyword.fetch!(:otp_app) |> validate_otp_app!()
@@ -134,22 +157,25 @@ defmodule ZiglerPrecompiled.Config do
   defp validate_variants!(_targets, nil), do: %{}
 
   defp validate_variants!(targets, variants) when is_map(variants) do
-    for {target, possibilities} <- variants do
-      unless target in targets do
-        raise "`:variants` contains target not in targets list: #{inspect(target)}"
-      end
+    Enum.each(variants, &validate_variant_target!(&1, targets))
+    variants
+  end
 
-      for {name, fun} <- possibilities do
-        unless is_atom(name) do
-          raise "`:variants` keys must be atoms, got: #{inspect(name)}"
-        end
-
-        unless is_function(fun, 0) or is_function(fun, 1) do
-          raise "`:variants` values must be 0- or 1-arity functions"
-        end
-      end
+  defp validate_variant_target!({target, possibilities}, targets) do
+    unless target in targets do
+      raise "`:variants` contains target not in targets list: #{inspect(target)}"
     end
 
-    variants
+    Enum.each(possibilities, &validate_variant_entry!/1)
+  end
+
+  defp validate_variant_entry!({name, fun}) do
+    unless is_atom(name) do
+      raise "`:variants` keys must be atoms, got: #{inspect(name)}"
+    end
+
+    unless is_function(fun, 0) or is_function(fun, 1) do
+      raise "`:variants` values must be 0- or 1-arity functions"
+    end
   end
 end

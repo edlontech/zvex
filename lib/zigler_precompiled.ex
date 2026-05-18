@@ -117,49 +117,59 @@ defmodule ZiglerPrecompiled do
 
     case build_metadata(config) do
       {:ok, metadata} ->
-        with {:error, error} <- write_metadata(module, metadata) do
-          Logger.warning(
-            "Cannot write metadata for #{inspect(module)}: #{inspect(error)}. " <>
-              "This is only an issue if you need the zigler_precompiled mix tasks."
-          )
-        end
-
-        if config.force_build? do
-          zigler_opts =
-            opts
-            |> Keyword.drop([
-              :base_url,
-              :version,
-              :force_build,
-              :targets,
-              :max_retries,
-              :variants,
-              :module_name
-            ])
-            |> Keyword.update(:nifs, [], &normalize_nifs_for_zigler/1)
-
-          {:force_build, zigler_opts}
-        else
-          with {:error, precomp_error} <- download_or_reuse_nif_file(config, metadata) do
-            message = """
-            Error downloading precompiled NIF: #{precomp_error}.
-
-            You can force the project to build from scratch with:
-
-                config :zigler_precompiled, :force_build, #{config.otp_app}: true
-
-            You also need Zigler as a dependency:
-
-                {:zigler, ">= 0.0.0", optional: true}
-            """
-
-            {:error, message}
-          end
-        end
+        maybe_warn_metadata_write(module, metadata)
+        build_or_download(config, metadata, opts)
 
       {:error, _} = error ->
         error
     end
+  end
+
+  defp maybe_warn_metadata_write(module, metadata) do
+    with {:error, error} <- write_metadata(module, metadata) do
+      Logger.warning(
+        "Cannot write metadata for #{inspect(module)}: #{inspect(error)}. " <>
+          "This is only an issue if you need the zigler_precompiled mix tasks."
+      )
+    end
+  end
+
+  defp build_or_download(%{force_build?: true}, _metadata, opts) do
+    {:force_build, zigler_force_build_opts(opts)}
+  end
+
+  defp build_or_download(config, metadata, _opts) do
+    with {:error, precomp_error} <- download_or_reuse_nif_file(config, metadata) do
+      {:error, force_build_message(config, precomp_error)}
+    end
+  end
+
+  defp zigler_force_build_opts(opts) do
+    opts
+    |> Keyword.drop([
+      :base_url,
+      :version,
+      :force_build,
+      :targets,
+      :max_retries,
+      :variants,
+      :module_name
+    ])
+    |> Keyword.update(:nifs, [], &normalize_nifs_for_zigler/1)
+  end
+
+  defp force_build_message(config, precomp_error) do
+    """
+    Error downloading precompiled NIF: #{precomp_error}.
+
+    You can force the project to build from scratch with:
+
+        config :zigler_precompiled, :force_build, #{config.otp_app}: true
+
+    You also need Zigler as a dependency:
+
+        {:zigler, ">= 0.0.0", optional: true}
+    """
   end
 
   @doc false
@@ -209,35 +219,37 @@ defmodule ZiglerPrecompiled do
   end
 
   defp normalize_triple(sys) do
-    {arch, os, abi} =
-      cond do
-        to_string(sys.os) =~ "darwin" ->
-          arch = if sys.arch == "arm", do: "aarch64", else: sys.arch
-          {arch, "macos", "none"}
+    {arch, os, abi} = triple_parts(sys, to_string(sys.os))
+    "#{arch}-#{os}-#{abi}"
+  end
 
-        to_string(sys.os) =~ "freebsd" ->
-          {sys.arch, "freebsd", "none"}
+  defp triple_parts(sys, os_str) do
+    cond do
+      os_str =~ "darwin" -> darwin_triple(sys)
+      os_str =~ "freebsd" -> {sys.arch, "freebsd", "none"}
+      os_str =~ "linux" -> linux_triple(sys)
+      match?({:win32, _}, :os.type()) -> windows_triple(sys)
+      true -> {sys.arch, os_str, sys.abi || "none"}
+    end
+  end
 
-        to_string(sys.os) =~ "linux" ->
-          arch = normalize_arch(sys.arch)
-          abi = sys.abi || "gnu"
-          {arch, "linux", abi}
+  defp darwin_triple(sys) do
+    arch = if sys.arch == "arm", do: "aarch64", else: sys.arch
+    {arch, "macos", "none"}
+  end
 
-        match?({:win32, _}, :os.type()) ->
-          arch =
-            case :erlang.system_info(:wordsize) do
-              8 -> "x86_64"
-              4 -> "x86"
-              _ -> sys.arch
-            end
+  defp linux_triple(sys) do
+    {normalize_arch(sys.arch), "linux", sys.abi || "gnu"}
+  end
 
-          {arch, "windows", "gnu"}
-
-        true ->
-          {sys.arch, to_string(sys.os), sys.abi || "none"}
+  defp windows_triple(_sys) do
+    arch =
+      case :erlang.system_info(:wordsize) do
+        8 -> "x86_64"
+        4 -> "x86"
       end
 
-    "#{arch}-#{os}-#{abi}"
+    {arch, "windows", "gnu"}
   end
 
   defp normalize_arch("i386"), do: "x86"
@@ -408,25 +420,29 @@ defmodule ZiglerPrecompiled do
   @doc false
   def download_nif_artifacts_with_checksums!(nifs_with_urls, opts \\ []) do
     ignore_unavailable = Keyword.get(opts, :ignore_unavailable, false)
+    Enum.flat_map(nifs_with_urls, &download_nif_artifact_with_checksum(&1, ignore_unavailable))
+  end
 
-    Enum.flat_map(nifs_with_urls, fn {lib_name, {url, headers}} ->
-      case download_with_retries(url, headers, 3) do
-        {:ok, body} ->
-          path = Path.join(System.tmp_dir!(), lib_name)
-          File.write!(path, body)
-          checksum = compute_checksum(body)
+  defp download_nif_artifact_with_checksum({lib_name, {url, headers}}, ignore_unavailable) do
+    case download_with_retries(url, headers, 3) do
+      {:ok, body} ->
+        path = Path.join(System.tmp_dir!(), lib_name)
+        File.write!(path, body)
+        checksum = compute_checksum(body)
+        [%{path: path, checksum: "sha256:#{checksum}", checksum_algo: @checksum_algo}]
 
-          [%{path: path, checksum: "sha256:#{checksum}", checksum_algo: @checksum_algo}]
+      {:error, reason} ->
+        handle_unavailable_nif(lib_name, url, reason, ignore_unavailable)
+    end
+  end
 
-        {:error, reason} ->
-          if ignore_unavailable do
-            Logger.warning("Skipping unavailable NIF #{lib_name}: #{inspect(reason)}")
-            []
-          else
-            raise "failed to download #{lib_name} from #{url}: #{inspect(reason)}"
-          end
-      end
-    end)
+  defp handle_unavailable_nif(lib_name, _url, reason, true) do
+    Logger.warning("Skipping unavailable NIF #{lib_name}: #{inspect(reason)}")
+    []
+  end
+
+  defp handle_unavailable_nif(lib_name, url, reason, false) do
+    raise "failed to download #{lib_name} from #{url}: #{inspect(reason)}"
   end
 
   @doc false

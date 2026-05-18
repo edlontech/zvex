@@ -100,17 +100,20 @@ defmodule Mix.Tasks.ZiglerPrecompiled.Build do
     native_dir = Application.app_dir(app, "priv/lib")
     module_name = to_string(module)
 
-    native_dir
-    |> Path.join("*")
-    |> Path.wildcard()
-    |> Enum.filter(fn path ->
-      file = Path.basename(path)
-      String.contains?(file, module_name) and String.ends_with?(file, [".so", ".dylib", ".dll"])
-    end)
-    |> Enum.reject(&File.dir?/1)
-    |> Enum.max_by(&File.stat!(&1).mtime, fn ->
-      Mix.raise("could not find built NIF for #{inspect(module)} in #{native_dir}")
-    end)
+    candidates =
+      native_dir
+      |> Path.join("*")
+      |> Path.wildcard()
+      |> Enum.filter(fn path ->
+        file = Path.basename(path)
+        String.contains?(file, module_name) and String.ends_with?(file, [".so", ".dylib", ".dll"])
+      end)
+      |> Enum.reject(&File.dir?/1)
+
+    case candidates do
+      [] -> Mix.raise("could not find built NIF for #{inspect(module)} in #{native_dir}")
+      files -> Enum.max_by(files, &File.stat!(&1).mtime)
+    end
   end
 
   defp ensure_project_app_loaded! do

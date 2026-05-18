@@ -26,7 +26,8 @@ defmodule Zvex.MixProject do
       make_env: %{"ZVEX_VERSION" => @zvec_version},
       docs: docs(),
       dialyzer: [
-        plt_core_path: "_plts/core"
+        plt_core_path: "_plts/core",
+        plt_add_apps: [:mix]
       ],
       deps: deps(),
       aliases: aliases()
@@ -207,7 +208,8 @@ defmodule Zvex.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/edlontech/zvex"},
-      files: ~w(lib mix.exs Makefile README.md CHANGELOG.md LICENSE NOTICE .formatter.exs checksum-*.exs),
+      files:
+        ~w(lib mix.exs Makefile README.md CHANGELOG.md LICENSE NOTICE .formatter.exs checksum-*.exs),
       exclude_patterns: [~r/\.Elixir\..*\.Native\.zig$/]
     ]
   end

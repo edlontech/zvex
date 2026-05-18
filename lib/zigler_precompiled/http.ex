@@ -1,6 +1,7 @@
 defmodule ZiglerPrecompiled.HTTP do
   @moduledoc false
 
+  @doc false
   def http_options do
     ssl_opts =
       [
