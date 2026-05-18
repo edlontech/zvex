@@ -2,13 +2,19 @@ defmodule Zvex.Native do
   @moduledoc """
   Low-level NIF bindings to the zvec C API.
 
-  At compile time, if the host target triple is in the supported set,
-  the precompiled NIF tarball for `zvex-v<version>` is downloaded from
-  GitHub releases and verified via SHA-256. If the download fails (or
-  the target is unsupported), zvex falls back to a source build through
-  Zigler + CMake (requires the Zig toolchain, CMake, and a C/C++
-  compiler). Set `ZVEX_BUILD=1` to skip the download and force a source
-  build.
+  At compile time the host target triple drives a single decision:
+
+    * Supported target and `ZVEX_BUILD` unset — download the
+      `zvex-v<version>` GitHub release tarball (NIF + `libzvec_c_api`),
+      verify via SHA-256, and unpack into `priv/lib`. No Makefile, no
+      Zig toolchain required.
+    * Unsupported target, or `ZVEX_BUILD=1` — build everything from
+      source via `elixir_make` (Makefile builds `libzvec_c_api`) plus
+      Zigler (compiles the NIF). Requires the Zig toolchain, CMake,
+      and a C/C++ compiler.
+
+  Download failures on a supported target raise — they do not silently
+  fall back to source. Set `ZVEX_BUILD=1` to take the source path.
 
   Prefer using the higher-level `Zvex` module API over calling these
   functions directly.

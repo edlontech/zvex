@@ -48,7 +48,8 @@ defmodule Zvex.MixProject do
     ]
   end
 
-  defp compilers(_), do: [:elixir_make] ++ Mix.compilers()
+  defp compilers(true), do: Mix.compilers()
+  defp compilers(false), do: [:elixir_make] ++ Mix.compilers()
 
   defp precompiled_available? do
     not force_build?() and current_target_triple() in @supported_targets

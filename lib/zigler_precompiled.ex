@@ -150,21 +150,9 @@ defmodule ZiglerPrecompiled do
     {:force_build, zigler_force_build_opts(opts)}
   end
 
-  defp build_or_download(config, metadata, opts) do
-    case download_or_reuse_nif_file(config, metadata) do
-      {:ok, _} = result ->
-        result
-
-      {:error, precomp_error} ->
-        if Code.ensure_loaded?(Zig) do
-          Logger.warning(
-            "Precompiled NIF download failed: #{precomp_error}. Falling back to source build."
-          )
-
-          {:force_build, zigler_force_build_opts(opts)}
-        else
-          {:error, force_build_message(config, precomp_error)}
-        end
+  defp build_or_download(config, metadata, _opts) do
+    with {:error, precomp_error} <- download_or_reuse_nif_file(config, metadata) do
+      {:error, force_build_message(config, precomp_error)}
     end
   end
 
