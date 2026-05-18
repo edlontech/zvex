@@ -28,7 +28,12 @@ NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 .PHONY: all build clean force
 
-all: build
+all:
+	@if [ -f "$(PRIV_DIR)/lib/$(SHARED_LIB)" ] && [ -f "$(PRIV_DIR)/include/zvec/c_api.h" ]; then \
+	  echo "[zvex] using existing $(SHARED_LIB) in $(PRIV_DIR)/lib (run 'mix clean' to force rebuild)"; \
+	else \
+	  $(MAKE) build; \
+	fi
 
 build: $(PRIV_DIR)/lib/$(SHARED_LIB) $(PRIV_DIR)/include/zvec/c_api.h
 

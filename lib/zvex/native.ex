@@ -2,13 +2,13 @@ defmodule Zvex.Native do
   @moduledoc """
   Low-level NIF bindings to the zvec C API.
 
-  When a precompiled artifact is available for the host target — i.e. the
-  Hex package ships `checksum-Elixir.Zvex.Native.exs` and the host triple
-  is in the supported set — the NIF is downloaded from the matching
-  `zvex-v<version>` GitHub release and verified via SHA-256. Otherwise
-  zvex builds from source through Zigler + CMake automatically (requires
-  the Zig toolchain, CMake, and a C/C++ compiler). Set `ZVEX_BUILD=1` to
-  force a source build even when a precompiled artifact is available.
+  At compile time `mix.exs` does an HTTP HEAD probe of the matching
+  `zvex-v<version>` GitHub release tarball for the host target triple. If
+  the release artifact is reachable and the triple is in the supported
+  set, the precompiled NIF is downloaded and verified via SHA-256.
+  Otherwise zvex falls back to a source build through Zigler + CMake
+  (requires the Zig toolchain, CMake, and a C/C++ compiler). Set
+  `ZVEX_BUILD=1` to skip the probe and force a source build.
 
   Prefer using the higher-level `Zvex` module API over calling these
   functions directly.

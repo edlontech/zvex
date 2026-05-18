@@ -44,6 +44,9 @@ defmodule ZiglerPrecompiled do
                     "Add it to your `mix.exs` file: `{:zigler, \">= 0.0.0\", optional: true}`"
           end
 
+        {:metadata_only, _} ->
+          unquote(ZiglerPrecompiled.generate_nif_stubs(opts[:nifs]))
+
         {:ok, config} ->
           @on_load :__load_zigler_precompiled__
           @zigler_precompiled_load_from config.load_from
@@ -118,11 +121,20 @@ defmodule ZiglerPrecompiled do
     case build_metadata(config) do
       {:ok, metadata} ->
         maybe_warn_metadata_write(module, metadata)
-        build_or_download(config, metadata, opts)
+
+        if metadata_only?() do
+          {:metadata_only, opts[:nifs]}
+        else
+          build_or_download(config, metadata, opts)
+        end
 
       {:error, _} = error ->
         error
     end
+  end
+
+  defp metadata_only? do
+    System.get_env("ZIGLER_PRECOMPILED_METADATA_ONLY") in ["1", "true"]
   end
 
   defp maybe_warn_metadata_write(module, metadata) do

@@ -5,7 +5,14 @@ defmodule Zvex.MixProject do
   @zvec_version "0.4.0"
 
   @supported_targets ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none)
-  @checksum_file "checksum-Elixir.Zvex.Native.exs"
+
+  # When invoked via `mix zigler_precompiled.download`, the project compile
+  # that Mix runs to load the task should emit NIF stubs only — no download,
+  # no source build. Setting the env here happens before any project source
+  # is compiled. The task itself re-sets this as a belt-and-suspenders.
+  if List.first(System.argv()) == "zigler_precompiled.download" do
+    System.put_env("ZIGLER_PRECOMPILED_METADATA_ONLY", "true")
+  end
 
   def project do
     use_precompiled = precompiled_available?()
@@ -45,11 +52,69 @@ defmodule Zvex.MixProject do
   defp compilers(false), do: [:elixir_make] ++ Mix.compilers()
 
   defp precompiled_available? do
-    not force_build?() and File.exists?(@checksum_file) and
-      current_target_triple() in @supported_targets
+    case :persistent_term.get({__MODULE__, :precompiled_available?}, :__unset__) do
+      :__unset__ ->
+        result = compute_precompiled_available?()
+        :persistent_term.put({__MODULE__, :precompiled_available?}, result)
+        result
+
+      value ->
+        value
+    end
+  end
+
+  defp compute_precompiled_available? do
+    cond do
+      force_build?() -> false
+      current_target_triple() not in @supported_targets -> false
+      true -> precompiled_url_reachable?()
+    end
   end
 
   defp force_build?, do: System.get_env("ZVEX_BUILD") in ["1", "true"]
+
+  defp precompiled_url_reachable? do
+    {:ok, _} = Application.ensure_all_started(:inets)
+    {:ok, _} = Application.ensure_all_started(:ssl)
+    {:ok, _} = Application.ensure_all_started(:public_key)
+
+    url = String.to_charlist(precompiled_url())
+    headers = [{~c"user-agent", ~c"zvex-mix"}]
+
+    http_options = [
+      {:ssl,
+       [
+         verify: :verify_peer,
+         cacerts: :public_key.cacerts_get(),
+         depth: 4,
+         customize_hostname_check: [
+           match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
+         ]
+       ]},
+      {:connect_timeout, 2000},
+      {:timeout, 3000}
+    ]
+
+    case :httpc.request(:head, {url, headers}, http_options, []) do
+      {:ok, {{_, status, _}, _, _}} when status in [200, 301, 302, 303, 307, 308] -> true
+      _ -> false
+    end
+  end
+
+  defp precompiled_url do
+    version = project_version()
+    triple = current_target_triple()
+
+    "https://github.com/edlontech/zvex/releases/download/zvex-v#{version}/" <>
+      "Elixir.Zvex.Native-v#{version}-#{triple}.so.tar.gz"
+  end
+
+  defp project_version do
+    case Regex.run(~r/version:\s*"([^"]+)"/, File.read!("mix.exs")) do
+      [_, v] -> v
+      _ -> raise "could not determine zvex version from mix.exs"
+    end
+  end
 
   defp current_target_triple do
     arch_str = :erlang.system_info(:system_architecture) |> List.to_string()
