@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/edlontech/zvex/compare/zvex-v0.4.3...zvex-v0.4.4) (2026-05-18)
+
+
+### Bug Fixes
+
+* Fixed precompiled_url check ([652ca0f](https://github.com/edlontech/zvex/commit/652ca0f836849a636984e36624a4b2489a3ea59e))
+
 ## [0.4.3](https://github.com/edlontech/zvex/compare/zvex-v0.4.2...zvex-v0.4.3) (2026-05-18)
 
 
