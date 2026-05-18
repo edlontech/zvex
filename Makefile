@@ -18,7 +18,10 @@ else
 	BUILD_LIB_DIR = lib
 endif
 
-CMAKE_FLAGS ?= -DCMAKE_BUILD_TYPE=Release \
+CMAKE_GENERATOR_FLAG := $(if $(shell command -v ninja 2>/dev/null),-G Ninja,)
+
+CMAKE_FLAGS ?= $(CMAKE_GENERATOR_FLAG) \
+	-DCMAKE_BUILD_TYPE=Release \
 	-DBUILD_C_BINDINGS=ON \
 	-DBUILD_PYTHON_BINDINGS=OFF \
 	-DBUILD_TOOLS=OFF \

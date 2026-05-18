@@ -17,7 +17,6 @@ jobs:
       zvex_release_created: ${{ steps.release.outputs.release_created }}
       zvex_tag_name: ${{ steps.release.outputs.tag_name }}
       zvex_version: ${{ steps.release.outputs.version }}
-      zvec_release_created: ${{ steps.release.outputs['.zvec--release_created'] }}
     steps:
       - uses: actions/create-github-app-token@v2
         id: app-token
@@ -71,6 +70,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake ninja-build patchelf
+          sudo apt-get install -y mold || echo "mold not available; falling back to default linker"
 
       - name: Install build tooling (macOS)
         if: runner.os == 'macOS'
@@ -111,17 +111,17 @@ jobs:
           key: mix-precompile-${{ matrix.target }}-${{ hashFiles('**/mix.lock') }}
           restore-keys: mix-precompile-${{ matrix.target }}-
 
+      - name: Compute CMAKE_FLAGS
+        shell: bash
+        run: |
+          flags="-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_C_BINDINGS=ON -DBUILD_PYTHON_BINDINGS=OFF -DBUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          if [ "$RUNNER_OS" = "Linux" ] && command -v mold >/dev/null 2>&1; then
+            flags="$flags -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
+          fi
+          echo "CMAKE_FLAGS=$flags" >> "$GITHUB_ENV"
+
       - name: Build NIF
         shell: bash
-        env:
-          CMAKE_FLAGS: >-
-            -DCMAKE_BUILD_TYPE=Release
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-            -DBUILD_C_BINDINGS=ON
-            -DBUILD_PYTHON_BINDINGS=OFF
-            -DBUILD_TOOLS=OFF
-            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         run: |
           set -euo pipefail
           mix local.hex --force

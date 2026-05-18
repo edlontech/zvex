@@ -419,14 +419,19 @@ defmodule ZiglerPrecompiled do
 
   defp find_installed_lib(dir, module) do
     module_str = "#{module}"
+    files = File.ls!(dir)
 
-    dir
-    |> File.ls!()
-    |> Enum.find(fn file ->
-      String.contains?(file, module_str) and
-        (String.ends_with?(file, ".so") or String.ends_with?(file, ".dll") or
-           String.ends_with?(file, ".dylib"))
-    end)
+    nif_entry =
+      Enum.find(files, fn file ->
+        file == "#{module_str}.so" or file == "#{module_str}.dll"
+      end)
+
+    nif_entry ||
+      Enum.find(files, fn file ->
+        String.contains?(file, module_str) and
+          (String.ends_with?(file, ".so") or String.ends_with?(file, ".dll") or
+             String.ends_with?(file, ".dylib"))
+      end)
   end
 
   @doc false

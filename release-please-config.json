@@ -15,18 +15,6 @@
           "path": "README.md"
         }
       ]
-    },
-    ".zvec": {
-      "release-type": "simple",
-      "package-name": "zvec",
-      "component": "zvec",
-      "changelog-path": "CHANGELOG.md",
-      "extra-files": [
-        {
-          "type": "generic",
-          "path": "../mix.exs"
-        }
-      ]
     }
   }
 }
