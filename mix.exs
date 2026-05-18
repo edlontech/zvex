@@ -48,78 +48,13 @@ defmodule Zvex.MixProject do
     ]
   end
 
-  defp compilers(true), do: Mix.compilers()
-  defp compilers(false), do: [:elixir_make] ++ Mix.compilers()
+  defp compilers(_), do: [:elixir_make] ++ Mix.compilers()
 
   defp precompiled_available? do
-    case :persistent_term.get({__MODULE__, :precompiled_available?}, :__unset__) do
-      :__unset__ ->
-        result = compute_precompiled_available?()
-        :persistent_term.put({__MODULE__, :precompiled_available?}, result)
-        result
-
-      value ->
-        value
-    end
-  end
-
-  defp compute_precompiled_available? do
-    cond do
-      force_build?() -> false
-      current_target_triple() not in @supported_targets -> false
-      true -> precompiled_url_reachable?()
-    end
+    not force_build?() and current_target_triple() in @supported_targets
   end
 
   defp force_build?, do: System.get_env("ZVEX_BUILD") in ["1", "true"]
-
-  defp precompiled_url_reachable? do
-    with {:ok, _} <- Application.ensure_all_started(:inets),
-         {:ok, _} <- Application.ensure_all_started(:ssl),
-         {:ok, _} <- Application.ensure_all_started(:public_key),
-         true <- Code.ensure_loaded?(:public_key),
-         true <- function_exported?(:public_key, :cacerts_get, 0),
-         true <- function_exported?(:public_key, :pkix_verify_hostname_match_fun, 1) do
-      url = String.to_charlist(precompiled_url())
-      headers = [{~c"user-agent", ~c"zvex-mix"}]
-
-      http_options = [
-        {:ssl,
-         [
-           verify: :verify_peer,
-           cacerts: :public_key.cacerts_get(),
-           depth: 4,
-           customize_hostname_check: [
-             match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-           ]
-         ]},
-        {:connect_timeout, 2000},
-        {:timeout, 3000}
-      ]
-
-      case :httpc.request(:head, {url, headers}, http_options, []) do
-        {:ok, {{_, status, _}, _, _}} when status in [200, 301, 302, 303, 307, 308] -> true
-        _ -> false
-      end
-    else
-      _ -> false
-    end
-  end
-
-  defp precompiled_url do
-    version = project_version()
-    triple = current_target_triple()
-
-    "https://github.com/edlontech/zvex/releases/download/zvex-v#{version}/" <>
-      "Elixir.Zvex.Native-v#{version}-#{triple}.so.tar.gz"
-  end
-
-  defp project_version do
-    case Regex.run(~r/version:\s*"([^"]+)"/, File.read!("mix.exs")) do
-      [_, v] -> v
-      _ -> raise "could not determine zvex version from mix.exs"
-    end
-  end
 
   defp current_target_triple do
     arch_str = :erlang.system_info(:system_architecture) |> List.to_string()
