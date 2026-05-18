@@ -4,19 +4,23 @@ defmodule Zvex.MixProject do
   # x-release-please-version
   @zvec_version "0.4.0"
 
-  @force_build System.get_env("ZVEX_BUILD") in ["1", "true"]
+  @supported_targets ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none)
+  @checksum_file "checksum-Elixir.Zvex.Native.exs"
 
   def project do
+    use_precompiled = precompiled_available?()
+
     [
       app: :zvex,
       zvec_version: @zvec_version,
+      zvex_use_precompiled: use_precompiled,
       description: description(),
       package: package(),
       version: "0.4.1",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: compilers(),
+      compilers: compilers(use_precompiled),
       make_targets: ["all"],
       make_clean: ["clean"],
       make_env: %{"ZVEX_VERSION" => @zvec_version},
@@ -36,11 +40,37 @@ defmodule Zvex.MixProject do
     ]
   end
 
-  defp compilers do
-    if @force_build do
-      [:elixir_make] ++ Mix.compilers()
-    else
-      Mix.compilers()
+  defp compilers(true), do: Mix.compilers()
+  defp compilers(false), do: [:elixir_make] ++ Mix.compilers()
+
+  defp precompiled_available? do
+    not force_build?() and File.exists?(@checksum_file) and
+      current_target_triple() in @supported_targets
+  end
+
+  defp force_build?, do: System.get_env("ZVEX_BUILD") in ["1", "true"]
+
+  defp current_target_triple do
+    arch_str = :erlang.system_info(:system_architecture) |> List.to_string()
+
+    case :os.type() do
+      {:unix, :darwin} ->
+        arch = if String.starts_with?(arch_str, ["aarch64", "arm"]), do: "aarch64", else: "x86_64"
+        "#{arch}-macos-none"
+
+      {:unix, _} ->
+        arch =
+          cond do
+            String.starts_with?(arch_str, "aarch64") -> "aarch64"
+            String.starts_with?(arch_str, "x86_64") -> "x86_64"
+            String.starts_with?(arch_str, "amd64") -> "x86_64"
+            true -> "unknown"
+          end
+
+        "#{arch}-linux-gnu"
+
+      {:win32, _} ->
+        "x86_64-windows-gnu"
     end
   end
 

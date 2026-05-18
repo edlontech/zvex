@@ -2,22 +2,26 @@ defmodule Zvex.Native do
   @moduledoc """
   Low-level NIF bindings to the zvec C API.
 
-  The precompiled NIF for the host target is downloaded from the matching
-  `zvex-v<version>` GitHub release and verified via SHA-256. Set
-  `ZVEX_BUILD=1` at compile time to force a local source build through
-  Zigler (requires the Zig toolchain, CMake, and a C/C++ compiler).
+  When a precompiled artifact is available for the host target — i.e. the
+  Hex package ships `checksum-Elixir.Zvex.Native.exs` and the host triple
+  is in the supported set — the NIF is downloaded from the matching
+  `zvex-v<version>` GitHub release and verified via SHA-256. Otherwise
+  zvex builds from source through Zigler + CMake automatically (requires
+  the Zig toolchain, CMake, and a C/C++ compiler). Set `ZVEX_BUILD=1` to
+  force a source build even when a precompiled artifact is available.
 
   Prefer using the higher-level `Zvex` module API over calling these
   functions directly.
   """
 
   @version Mix.Project.config()[:version]
+  @use_precompiled Mix.Project.config()[:zvex_use_precompiled] == true
 
   use ZiglerPrecompiled,
     otp_app: :zvex,
     base_url: "https://github.com/edlontech/zvex/releases/download/zvex-v#{@version}",
     version: @version,
-    force_build: System.get_env("ZVEX_BUILD") in ["1", "true"],
+    force_build: not @use_precompiled,
     targets: ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none),
     zig_code_path: "native.zig",
     resources: [:CollectionResource],
