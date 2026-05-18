@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.3](https://github.com/edlontech/zvex/compare/zvex-v0.4.2...zvex-v0.4.3) (2026-05-18)
+
+
+### Bug Fixes
+
+* Cleaned up old ZVec build ([81d583e](https://github.com/edlontech/zvex/commit/81d583e34a9faffd10014ada709b5a0f13ff7bc5))
+* Don't keep triggering the zvec rebuild if not needed ([2688cee](https://github.com/edlontech/zvex/commit/2688cee029df3d75684cf47674b6f17767abb9f8))
+
 ## [0.4.2](https://github.com/edlontech/zvex/compare/zvex-v0.4.1...zvex-v0.4.2) (2026-05-18)
 
 
