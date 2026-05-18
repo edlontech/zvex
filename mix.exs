@@ -3,8 +3,8 @@ defmodule Zvex.MixProject do
 
   # x-release-please-version
   @zvec_version "0.4.0"
-  @sentinel ".zvex_precompiled"
-  @manifest_vsn 1
+
+  @force_build System.get_env("ZVEX_BUILD") in ["1", "true"]
 
   def project do
     [
@@ -16,7 +16,7 @@ defmodule Zvex.MixProject do
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
-      compilers: [:zvex_precompiled, :elixir_make] ++ Mix.compilers(),
+      compilers: compilers(),
       make_targets: ["all"],
       make_clean: ["clean"],
       make_env: %{"ZVEX_VERSION" => @zvec_version},
@@ -31,14 +31,21 @@ defmodule Zvex.MixProject do
 
   def application do
     [
-      extra_applications: [:logger],
+      extra_applications: [:logger, :inets, :ssl, :crypto, :public_key],
       mod: {Zvex.Application, []}
     ]
   end
 
+  defp compilers do
+    if @force_build do
+      [:elixir_make] ++ Mix.compilers()
+    else
+      Mix.compilers()
+    end
+  end
+
   defp aliases do
     [
-      "compile.zvex_precompiled": &precompiled/1,
       "bench.vector": ["run bench/vector_bench.exs"],
       "bench.document": ["run bench/document_bench.exs"],
       "bench.collection": ["run bench/collection_bench.exs"],
@@ -128,13 +135,13 @@ defmodule Zvex.MixProject do
     [
       {:bandit, "~> 1.8", only: :dev, runtime: false},
       {:benchee, "~> 1.0", only: :dev},
-      {:castore, "~> 1.0"},
       {:benchee_markdown, "~> 0.3", only: :dev},
       {:benchee_json, "~> 1.0", only: :dev},
+      {:castore, "~> 0.1 or ~> 1.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:doctor, "~> 0.22", only: :dev},
-      {:elixir_make, "~> 0.9", runtime: false},
+      {:elixir_make, "~> 0.9", optional: true, runtime: false},
       {:ex_check, "~> 0.16", only: [:dev, :test], runtime: false},
       {:excoveralls, "~> 0.18", only: [:dev, :test]},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
@@ -145,7 +152,7 @@ defmodule Zvex.MixProject do
       {:splode, "~> 0.3"},
       {:telemetry, "~> 1.3"},
       {:tidewave, "~> 0.5", only: :dev, runtime: false},
-      {:zigler, "~> 0.15.2", runtime: false},
+      {:zigler, "~> 0.15.2", optional: true, runtime: false},
       {:zoi, "~> 0.11"}
     ]
   end
@@ -170,253 +177,8 @@ defmodule Zvex.MixProject do
     [
       licenses: ["MIT"],
       links: %{"GitHub" => "https://github.com/edlontech/zvex"},
-      files: ~w(lib mix.exs Makefile README.md CHANGELOG.md LICENSE .formatter.exs),
+      files: ~w(lib mix.exs Makefile README.md CHANGELOG.md LICENSE NOTICE .formatter.exs checksum-*.exs),
       exclude_patterns: [~r/\.Elixir\..*\.Native\.zig$/]
     ]
-  end
-
-  defp precompiled(_args) do
-    cond do
-      System.get_env("ZVEX_BUILD") == "true" ->
-        Mix.shell().info("[zvex] ZVEX_BUILD=true — skipping precompiled download")
-        {:noop, []}
-
-      true ->
-        case detect_target() do
-          {:ok, target} ->
-            case fetch_precompiled(target) do
-              :ok ->
-                {:ok, []}
-
-              {:error, reason} ->
-                Mix.shell().info(
-                  "[zvex] precompiled binary unavailable (#{reason}) — falling back to source build"
-                )
-
-                {:noop, []}
-            end
-
-          :unsupported ->
-            Mix.shell().info(
-              "[zvex] no precompiled binary for this target — building from source " <>
-                "(requires cmake, a working C/C++ toolchain, and git to fetch zvec)"
-            )
-
-            {:noop, []}
-        end
-    end
-  end
-
-  defp fetch_precompiled(target) do
-    version = @zvec_version
-    cache_dir = Path.join([cache_root(), version, target])
-    tarball = Path.join(cache_dir, "zvec-v#{version}-#{target}.tar.gz")
-    sha_file = tarball <> ".sha256"
-
-    File.mkdir_p!(cache_dir)
-
-    if sentinel_valid?(version, target) do
-      :ok
-    else
-      with :ok <- ensure_downloaded(version, target, tarball, sha_file),
-           :ok <- verify_sha256(tarball, sha_file),
-           :ok <- replace_priv(tarball) do
-        write_sentinel(version, target)
-        :ok
-      end
-    end
-  end
-
-  defp ensure_downloaded(version, target, tarball, sha_file) do
-    if File.exists?(tarball) and File.exists?(sha_file) do
-      :ok
-    else
-      with :ok <- download(url(version, target), tarball),
-           :ok <- download(url(version, target) <> ".sha256", sha_file) do
-        :ok
-      end
-    end
-  end
-
-  defp replace_priv(tarball) do
-    wipe_priv()
-    extract(tarball, priv_dir())
-  end
-
-  defp cache_root do
-    :user_cache |> :filename.basedir(~c"zvex") |> to_string()
-  end
-
-  defp priv_dir do
-    Path.join(Mix.Project.app_path(), "priv")
-  end
-
-  defp url(version, target) do
-    prefix =
-      System.get_env("ZVEX_BUILD_URL") ||
-        "https://github.com/edlontech/zvex/releases/download"
-
-    "#{String.trim_trailing(prefix, "/")}/zvec-v#{version}/zvec-v#{version}-#{target}.tar.gz"
-  end
-
-  defp detect_target do
-    :system_architecture
-    |> :erlang.system_info()
-    |> to_string()
-    |> normalize_architecture()
-  end
-
-  defp normalize_architecture("x86_64-" <> rest), do: classify(rest, "x86_64")
-  defp normalize_architecture("aarch64-" <> rest), do: classify(rest, "aarch64")
-  defp normalize_architecture("arm64-" <> rest), do: classify(rest, "aarch64")
-  defp normalize_architecture(_other), do: :unsupported
-
-  defp classify(rest, arch) do
-    cond do
-      String.contains?(rest, "linux-musl") ->
-        :unsupported
-
-      String.contains?(rest, "linux-gnu") or String.contains?(rest, "linux") ->
-        {:ok, "linux-#{arch}-gnu"}
-
-      String.contains?(rest, "apple-darwin") and arch == "aarch64" ->
-        {:ok, "darwin-aarch64"}
-
-      true ->
-        :unsupported
-    end
-  end
-
-  defp download(url, dest) do
-    Mix.shell().info("[zvex] downloading #{url}")
-    {:ok, _} = Application.ensure_all_started(:inets)
-    {:ok, _} = Application.ensure_all_started(:ssl)
-
-    request = {String.to_charlist(url), []}
-
-    http_opts = [
-      ssl: [
-        verify: :verify_peer,
-        cacertfile: String.to_charlist(CAStore.file_path()),
-        depth: 4,
-        customize_hostname_check: [
-          match_fun: :public_key.pkix_verify_hostname_match_fun(:https)
-        ]
-      ],
-      autoredirect: true
-    ]
-
-    opts = [stream: String.to_charlist(dest)]
-
-    case :httpc.request(:get, request, http_opts, opts) do
-      {:ok, :saved_to_file} ->
-        :ok
-
-      {:ok, {{_, status, _}, _, _}} ->
-        File.rm(dest)
-        {:error, "HTTP #{status} for #{url}"}
-
-      {:error, reason} ->
-        File.rm(dest)
-        {:error, "transport error for #{url}: #{inspect(reason)}"}
-    end
-  end
-
-  defp verify_sha256(tarball, sha_file) do
-    expected =
-      sha_file
-      |> File.read!()
-      |> String.split(~r/\s+/, trim: true)
-      |> List.first()
-      |> String.downcase()
-
-    actual =
-      tarball
-      |> File.read!()
-      |> then(&:crypto.hash(:sha256, &1))
-      |> Base.encode16(case: :lower)
-
-    if actual == expected do
-      :ok
-    else
-      File.rm(tarball)
-      File.rm(sha_file)
-      {:error, "checksum mismatch for #{Path.basename(tarball)} (cache wiped)"}
-    end
-  end
-
-  defp wipe_priv do
-    priv = priv_dir()
-    if File.exists?(priv), do: File.rm_rf!(priv)
-    File.mkdir_p!(priv)
-  end
-
-  defp extract(tarball, dest) do
-    tarball_charlist = String.to_charlist(tarball)
-
-    with {:ok, entries} <- :erl_tar.table(tarball_charlist, [:compressed]),
-         :ok <- validate_entries(entries) do
-      case :erl_tar.extract(tarball_charlist, [:compressed, {:cwd, String.to_charlist(dest)}]) do
-        :ok ->
-          :ok
-
-        {:error, reason} ->
-          File.rm(tarball)
-          {:error, "failed to extract #{Path.basename(tarball)}: #{inspect(reason)}"}
-      end
-    else
-      {:unsafe, name} ->
-        File.rm(tarball)
-
-        {:error,
-         "tarball #{Path.basename(tarball)} contains unsafe entry path #{inspect(name)} (cache wiped)"}
-
-      {:error, reason} ->
-        File.rm(tarball)
-        {:error, "failed to read #{Path.basename(tarball)}: #{inspect(reason)}"}
-    end
-  end
-
-  defp validate_entries(entries) do
-    Enum.reduce_while(entries, :ok, fn entry, :ok ->
-      name = to_string(entry)
-
-      cond do
-        String.starts_with?(name, "/") -> {:halt, {:unsafe, name}}
-        name == ".." or String.contains?(name, "../") -> {:halt, {:unsafe, name}}
-        true -> {:cont, :ok}
-      end
-    end)
-  end
-
-  defp write_sentinel(version, target) do
-    File.write!(
-      Path.join(priv_dir(), @sentinel),
-      "#{@manifest_vsn}\n#{version}\n#{target}\n"
-    )
-  end
-
-  defp sentinel_valid?(version, target) do
-    path = Path.join(priv_dir(), @sentinel)
-
-    with true <- File.exists?(path),
-         {:ok, contents} <- File.read(path),
-         [vsn, stored_version, stored_target] <- String.split(contents, "\n", trim: true),
-         true <- vsn == Integer.to_string(@manifest_vsn),
-         true <- stored_version == version,
-         true <- stored_target == target,
-         true <- File.exists?(Path.join([priv_dir(), "lib", shared_lib()])) do
-      true
-    else
-      _ -> false
-    end
-  end
-
-  defp shared_lib do
-    case :os.type() do
-      {:unix, :darwin} -> "libzvec_c_api.dylib"
-      {:win32, _} -> "zvec_c_api.dll"
-      _ -> "libzvec_c_api.so"
-    end
   end
 end

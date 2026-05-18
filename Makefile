@@ -28,12 +28,7 @@ NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
 .PHONY: all build clean force
 
-all:
-	@if [ -f $(PRIV_DIR)/.zvex_precompiled ]; then \
-	  echo "[zvex] using precompiled libzvec_c_api"; \
-	else \
-	  $(MAKE) --no-print-directory build; \
-	fi
+all: build
 
 build: $(PRIV_DIR)/lib/$(SHARED_LIB) $(PRIV_DIR)/include/zvec/c_api.h
 
@@ -69,4 +64,3 @@ clean:
 	rm -rf $(ZVEC_BUILD)
 	rm -f $(PRIV_DIR)/lib/$(SHARED_LIB)
 	rm -rf $(PRIV_DIR)/include/zvec
-	rm -f $(PRIV_DIR)/.zvex_precompiled

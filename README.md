@@ -26,26 +26,31 @@ def deps do
 end
 ```
 
-`zvex` ships prebuilt `libzvec_c_api` binaries for the targets listed below. On `mix deps.compile`, the matching binary is downloaded from the GitHub Releases for this repo and verified via SHA256. Zig is still required (the NIF compiles locally via Zigler).
+`zvex` ships precompiled NIFs for the targets listed below. On `mix deps.compile`, the matching artifact is downloaded from the GitHub Releases for this repo and verified via SHA-256 against the checksum file packaged with Hex. **No Zig, CMake, or C/C++ toolchain is required** when a precompiled artifact matches the host.
 
-### Supported prebuilt targets
+### Supported precompiled targets
 
-- `linux-x86_64-gnu` (glibc >= 2.35 / Ubuntu 22.04+)
-- `linux-aarch64-gnu`
-- `darwin-aarch64` (Apple Silicon)
+- `x86_64-linux-gnu` (glibc >= 2.35 / Ubuntu 22.04+)
+- `aarch64-linux-gnu`
+- `aarch64-macos-none` (Apple Silicon)
 
-Other targets (e.g. Windows, FreeBSD, darwin-x86_64, Alpine/musl) fall through to a source build requiring `cmake`, a C/C++ toolchain, and `git`. When building from source, the matching zvec release is fetched from upstream automatically; airgapped users can pre-populate `c_src/zvec` with the desired sources and the Makefile will skip the fetch.
+### Building from source
 
-On Windows, the source build must run from a Unix-like shell (MSYS2, Git Bash, or Cygwin) — `cmd.exe` is not supported. The required tools are `make`, `cmake`, `git`, and a MinGW-w64 C/C++ toolchain; under MSYS2 these are installed via the usual `pacman` packages (`mingw-w64-x86_64-toolchain`, `mingw-w64-x86_64-cmake`, `make`, `git`). The build output is `zvec_c_api.dll` in `priv/lib/`.
+Any other target (Windows, FreeBSD, x86_64-macOS, Alpine/musl, …) requires a source build. Force it on a supported target with `ZVEX_BUILD=1 mix compile`. Source builds need:
+
+- The Zig toolchain (0.15.x)
+- `cmake`, `git`, and a C/C++ compiler
+- Recursive `git submodule update --init` (or let the Makefile clone `zvec` automatically)
+
+On Windows, the source build must run from a Unix-like shell (MSYS2, Git Bash, or Cygwin) — `cmd.exe` is not supported. Under MSYS2 install `mingw-w64-x86_64-toolchain`, `mingw-w64-x86_64-cmake`, `make`, and `git`. The build output is `zvec_c_api.dll` in `priv/lib/`.
 
 ### Environment variables
 
-| Variable          | Effect                                                                  |
-|-------------------|-------------------------------------------------------------------------|
-| `ZVEX_BUILD=true` | Skip the precompiled download and build `libzvec_c_api` from source.    |
-| `ZVEX_BUILD_URL`  | Override the download prefix (private mirrors, airgapped environments). |
-| `ZVEC_REPO`       | Override the upstream zvec git URL used for source fetches.             |
-| `ZVEC_TAG`        | Override the zvec git tag/ref fetched when building from source.        |
+| Variable          | Effect                                                                                |
+|-------------------|---------------------------------------------------------------------------------------|
+| `ZVEX_BUILD=1`    | Skip the precompiled download and build the NIF locally via Zigler.                   |
+| `ZVEC_REPO`       | Override the upstream `zvec` git URL used for source fetches.                         |
+| `ZVEC_TAG`        | Override the `zvec` git tag/ref fetched when building from source.                    |
 
 ## Quick Start
 

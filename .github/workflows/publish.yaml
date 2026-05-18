@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       zvex_release_created: ${{ steps.release.outputs.release_created }}
+      zvex_tag_name: ${{ steps.release.outputs.tag_name }}
+      zvex_version: ${{ steps.release.outputs.version }}
       zvec_release_created: ${{ steps.release.outputs['.zvec--release_created'] }}
     steps:
       - uses: actions/create-github-app-token@v2
@@ -29,78 +31,179 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
-  publish:
+  precompile:
+    name: Precompile ${{ matrix.target }}
     needs: [release-please]
     if: ${{ needs.release-please.outputs.zvex_release_created == 'true' }}
-    runs-on: ubuntu-22.04-arm
-    timeout-minutes: 30
+    timeout-minutes: 120
     strategy:
+      fail-fast: false
       matrix:
-        elixir: ["1.19.4"]
-        otp: ["28.3"]
-        zig: ["0.15.2"]
+        include:
+          - target: x86_64-linux-gnu
+            runner: ubuntu-24.04
+            shared_lib: libzvec_c_api.so
+          - target: aarch64-linux-gnu
+            runner: ubuntu-22.04-arm
+            shared_lib: libzvec_c_api.so
+          - target: aarch64-macos-none
+            runner: macos-14
+            shared_lib: libzvec_c_api.dylib
+
+    runs-on: ${{ matrix.runner }}
     env:
-      CMAKE_FLAGS: >-
-        -DCMAKE_BUILD_TYPE=Release
-        -DCMAKE_C_COMPILER_LAUNCHER=ccache
-        -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-        -DBUILD_C_BINDINGS=ON
-        -DBUILD_PYTHON_BINDINGS=OFF
-        -DBUILD_TOOLS=OFF
-        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      MIX_ENV: prod
+      ZVEX_BUILD: "true"
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install build essentials
-        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
-
-      - name: Set up Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: ${{ matrix.elixir }}
-          otp-version: ${{ matrix.otp }}
-
-      - name: Setup Zig
-        uses: mlugg/setup-zig@v2
-        with:
-          version: ${{ matrix.zig }}
-
-      - name: Resolve submodule SHA
+      - name: Resolve zvec submodule SHA
         id: submodule
         shell: bash
         run: echo "sha=$(git -C c_src/zvec rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Install build tooling (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build patchelf
+
+      - name: Install build tooling (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja cmake
+
+      - name: Set up Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.4"
+          otp-version: "28.3"
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.15.2"
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
-          key: publish-${{ runner.os }}-${{ runner.arch }}
-          max-size: 1G
+          key: precompile-${{ matrix.target }}
+          max-size: 5G
 
-      - name: Restore deps and _build cache
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: _build/zvec
+          key: cmake-precompile-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
+          restore-keys: |
+            cmake-precompile-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-
+            cmake-precompile-${{ matrix.target }}-
+
+      - name: Cache mix deps
         uses: actions/cache@v4
         with:
           path: |
             deps
-            _build
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-
+            _build/prod
+          key: mix-precompile-${{ matrix.target }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: mix-precompile-${{ matrix.target }}-
 
-      - name: Cache CMake build directory
-        uses: actions/cache@v4
-        with:
-          path: _build/zvec
-          key: cmake-publish-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
-          restore-keys: |
-            cmake-publish-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-
-            cmake-publish-${{ runner.os }}-${{ runner.arch }}-
-
-      - name: Fetch and Compile Dependencies
+      - name: Build NIF
+        shell: bash
+        env:
+          CMAKE_FLAGS: >-
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+            -DBUILD_C_BINDINGS=ON
+            -DBUILD_PYTHON_BINDINGS=OFF
+            -DBUILD_TOOLS=OFF
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
         run: |
+          set -euo pipefail
+          mix local.hex --force
+          mix local.rebar --force
           mix deps.get
-          mix deps.compile
+          mix compile
+
+      - name: Set portable RPATH (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NIF="_build/${MIX_ENV}/lib/zvex/priv/lib/Elixir.Zvex.Native.so"
+          patchelf --set-rpath '$ORIGIN' "$NIF"
+          readelf -d "$NIF" | grep -E 'RUNPATH|RPATH' || true
+
+      - name: Set portable RPATH (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRIV="_build/${MIX_ENV}/lib/zvex/priv/lib"
+          NIF="$PRIV/Elixir.Zvex.Native.so"
+
+          while otool -l "$NIF" | awk '/cmd LC_RPATH/{found=1} found && /path /{print $2; exit}' \
+                | grep -q '^/'; do
+            abs=$(otool -l "$NIF" | awk '/cmd LC_RPATH/{found=1} found && /path /{print $2; exit}')
+            install_name_tool -delete_rpath "$abs" "$NIF"
+          done
+
+          install_name_tool -add_rpath @loader_path "$NIF" || true
+          install_name_tool -id @rpath/Elixir.Zvex.Native.so "$NIF"
+          install_name_tool -id @rpath/libzvec_c_api.dylib "$PRIV/libzvec_c_api.dylib"
+
+      - name: Package and upload artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.release-please.outputs.zvex_tag_name }}
+          VERSION: ${{ needs.release-please.outputs.zvex_version }}
+        run: |
+          set -euo pipefail
+          name="Elixir.Zvex.Native-v${VERSION}-${{ matrix.target }}"
+          PRIV="_build/${MIX_ENV}/lib/zvex/priv/lib"
+
+          staging=$(mktemp -d)
+          cp -a "$PRIV/Elixir.Zvex.Native.so" "$staging/"
+          cp -a "$PRIV/${{ matrix.shared_lib }}" "$staging/"
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            for f in "$PRIV"/libElixir.Zvex.Native*; do
+              cp -a "$f" "$staging/"
+            done
+          fi
+
+          tar -C "$staging" -czf "${name}.so.tar.gz" .
+          gh release upload "$TAG" "${name}.so.tar.gz" --clobber
+
+  publish:
+    name: Publish to Hex
+    needs: [release-please, precompile]
+    if: ${{ needs.release-please.outputs.zvex_release_created == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.4"
+          otp-version: "28.3"
+
+      - name: Fetch deps
+        run: |
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+
+      - name: Generate checksum file
+        run: mix zigler_precompiled.download Zvex.Native --all --print
 
       - name: Publish to hex.pm
         run: HEX_API_KEY=${{ secrets.HEX_API_KEY }} mix hex.publish --yes
