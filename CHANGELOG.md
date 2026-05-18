@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.5](https://github.com/edlontech/zvex/compare/zvex-v0.4.4...zvex-v0.4.5) (2026-05-18)
+
+
+### Bug Fixes
+
+* Skip elixir_make on precompiled path ([53d2623](https://github.com/edlontech/zvex/commit/53d2623c4d16d7944b3dce81599bb0905472d353))
+
 ## [0.4.4](https://github.com/edlontech/zvex/compare/zvex-v0.4.3...zvex-v0.4.4) (2026-05-18)
 
 
