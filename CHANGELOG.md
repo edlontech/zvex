@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.2](https://github.com/edlontech/zvex/compare/zvex-v0.4.1...zvex-v0.4.2) (2026-05-18)
+
+
+### Features
+
+* Improving pre-compiled flow ([5be5fa1](https://github.com/edlontech/zvex/commit/5be5fa12177097a0f3b464ff742ecaca029e3a59))
+* vendor zigler_precompiled to enable Hex release ([91630ae](https://github.com/edlontech/zvex/commit/91630ae6fed8651a9ce6d4453cffda15c689045c))
+
+
+### Bug Fixes
+
+* Fixing checks ([0872863](https://github.com/edlontech/zvex/commit/087286315b380aa78987b71b25488cf533a85a22))
+
 ## [0.4.1](https://github.com/edlontech/zvex/compare/zvex-v0.4.0...zvex-v0.4.1) (2026-05-13)
 
 
