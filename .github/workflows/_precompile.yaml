@@ -147,15 +147,29 @@ jobs:
         if: failure()
         shell: bash
         run: |
+          echo "=== tool versions ==="
+          zig version || echo "zig not on PATH"
+          cmake --version | head -1 || echo "cmake not on PATH"
+          ninja --version || echo "ninja not on PATH"
+          make --version | head -1 || echo "make not on PATH"
+          echo "=== PATH ==="
+          echo "$PATH" | tr ':' '\n' | tr ';' '\n'
+          echo "=== env (filtered) ==="
+          env | grep -iE '^(INCLUDE|LIB|LIBPATH|ZIG|MIX|MAKE|CC|CXX|CMAKE|RUNNER_OS|VSINSTALL|MSYS|MINGW)' | sort || true
           echo "=== priv contents ==="
-          find _build -type f \( -name '*.so' -o -name '*.dll' -o -name '*.dylib' -o -name '*.h' \) 2>/dev/null || true
+          find _build -type f \( -name '*.so' -o -name '*.dll' -o -name '*.dylib' -o -name '*.lib' -o -name '*.h' \) 2>/dev/null || true
+          echo "=== cmake logs ==="
+          for f in _build/zvec/CMakeFiles/CMakeError.log _build/zvec/CMakeFiles/CMakeOutput.log _build/zvec/CMakeCache.txt; do
+            if [ -f "$f" ]; then
+              echo "--- $f ---"
+              tail -200 "$f"
+            else
+              echo "--- $f (missing) ---"
+            fi
+          done
           echo "=== zigler build dirs ==="
           find _build -type d -name '*zigler*' 2>/dev/null || true
           find deps/zigler -maxdepth 2 -type d 2>/dev/null || true
-          echo "=== env (filtered) ==="
-          env | grep -iE '^(INCLUDE|LIB|LIBPATH|ZIG|MIX|MAKE|CC|CXX|RUNNER_OS|VSINSTALL)' | sort || true
-          echo "=== zig version ==="
-          zig version || echo "zig not on PATH"
 
       - name: Set portable RPATH (Linux)
         if: runner.os == 'Linux'
