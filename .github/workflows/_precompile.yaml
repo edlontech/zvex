@@ -77,12 +77,6 @@ jobs:
         shell: bash
         run: choco install ninja -y
 
-      - name: Set up MSVC (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
       - name: Set up Elixir/OTP
         uses: erlef/setup-beam@v1
         with:
@@ -121,10 +115,18 @@ jobs:
       - name: Compute CMAKE_FLAGS
         shell: bash
         run: |
-          flags="-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_C_BINDINGS=ON -DBUILD_PYTHON_BINDINGS=OFF -DBUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-          if [ "$RUNNER_OS" = "Linux" ] && command -v mold >/dev/null 2>&1; then
-            flags="$flags -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
-          fi
+          flags="-G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_C_BINDINGS=ON -DBUILD_PYTHON_BINDINGS=OFF -DBUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          case "$RUNNER_OS" in
+            Linux|macOS)
+              flags="$flags -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+              if [ "$RUNNER_OS" = "Linux" ] && command -v mold >/dev/null 2>&1; then
+                flags="$flags -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
+              fi
+              ;;
+            Windows)
+              flags="$flags -DCMAKE_C_COMPILER=zig -DCMAKE_C_COMPILER_ARG1=cc -DCMAKE_CXX_COMPILER=zig -DCMAKE_CXX_COMPILER_ARG1=c++"
+              ;;
+          esac
           echo "CMAKE_FLAGS=$flags" >> "$GITHUB_ENV"
 
       - name: Build NIF
@@ -133,11 +135,27 @@ jobs:
           set -euo pipefail
           if [ "$RUNNER_OS" = "Windows" ]; then
             export MAKE=make
+            export ZIG_GLOBAL_CACHE_DIR="${RUNNER_TEMP}/zig-cache"
+            mkdir -p "$ZIG_GLOBAL_CACHE_DIR"
           fi
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
           mix compile
+
+      - name: Diagnose build failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== priv contents ==="
+          find _build -type f \( -name '*.so' -o -name '*.dll' -o -name '*.dylib' -o -name '*.h' \) 2>/dev/null || true
+          echo "=== zigler build dirs ==="
+          find _build -type d -name '*zigler*' 2>/dev/null || true
+          find deps/zigler -maxdepth 2 -type d 2>/dev/null || true
+          echo "=== env (filtered) ==="
+          env | grep -iE '^(INCLUDE|LIB|LIBPATH|ZIG|MIX|MAKE|CC|CXX|RUNNER_OS|VSINSTALL)' | sort || true
+          echo "=== zig version ==="
+          zig version || echo "zig not on PATH"
 
       - name: Set portable RPATH (Linux)
         if: runner.os == 'Linux'
