@@ -23,7 +23,7 @@ defmodule Zvex.MixProject do
       zvex_use_precompiled: use_precompiled,
       description: description(),
       package: package(),
-      version: "0.4.6",
+      version: "0.4.7",
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),

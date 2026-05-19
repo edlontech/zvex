@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.7](https://github.com/edlontech/zvex/compare/zvex-v0.4.6...zvex-v0.4.7) (2026-05-19)
+
+
+### Bug Fixes
+
+* Dropped windows support for now, zigler issue ([fe12d54](https://github.com/edlontech/zvex/commit/fe12d54b9513267f9c965009675f4d2487a70dfb))
+
 ## [0.4.6](https://github.com/edlontech/zvex/compare/zvex-v0.4.5...zvex-v0.4.6) (2026-05-19)
 
 
