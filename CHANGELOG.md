@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.6](https://github.com/edlontech/zvex/compare/zvex-v0.4.5...zvex-v0.4.6) (2026-05-19)
+
+
+### Bug Fixes
+
+* Added support for precompiled windows .dll ([ccd5216](https://github.com/edlontech/zvex/commit/ccd52160227c707578c4cc43ef9667c574059223))
+
 ## [0.4.5](https://github.com/edlontech/zvex/compare/zvex-v0.4.4...zvex-v0.4.5) (2026-05-18)
 
 
