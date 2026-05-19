@@ -10,9 +10,6 @@ UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 	SHARED_LIB = libzvec_c_api.dylib
 	BUILD_LIB_DIR = lib
-else ifneq (,$(filter MINGW% MSYS% CYGWIN%,$(UNAME_S)))
-	SHARED_LIB = zvec_c_api.dll
-	BUILD_LIB_DIR = bin
 else
 	SHARED_LIB = libzvec_c_api.so
 	BUILD_LIB_DIR = lib

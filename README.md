@@ -36,13 +36,13 @@ end
 
 ### Building from source
 
-Any other target (Windows, FreeBSD, x86_64-macOS, Alpine/musl, …) requires a source build. Force it on a supported target with `ZVEX_BUILD=1 mix compile`. Source builds need:
+Any other Unix target (FreeBSD, x86_64-macOS, Alpine/musl, …) requires a source build. Force it on a supported target with `ZVEX_BUILD=1 mix compile`. Source builds need:
 
 - The Zig toolchain (0.15.x)
 - `cmake`, `git`, and a C/C++ compiler
 - Recursive `git submodule update --init` (or let the Makefile clone `zvec` automatically)
 
-On Windows, the source build must run from a Unix-like shell (MSYS2, Git Bash, or Cygwin) — `cmd.exe` is not supported. Under MSYS2 install `mingw-w64-x86_64-toolchain`, `mingw-w64-x86_64-cmake`, `make`, and `git`. The build output is `zvec_c_api.dll` in `priv/lib/`.
+Windows is not supported.
 
 ### Environment variables
 

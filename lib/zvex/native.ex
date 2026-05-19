@@ -28,7 +28,7 @@ defmodule Zvex.Native do
     base_url: "https://github.com/edlontech/zvex/releases/download/zvex-v#{@version}",
     version: @version,
     force_build: not @use_precompiled,
-    targets: ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none x86_64-windows-gnu),
+    targets: ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none),
     zig_code_path: "native.zig",
     resources: [:CollectionResource],
     c: [

@@ -39,10 +39,6 @@ jobs:
             runner: macos-14
             shared_lib: libzvec_c_api.dylib
             nif_ext: so
-          - target: x86_64-windows-gnu
-            runner: windows-2022
-            shared_lib: zvec_c_api.dll
-            nif_ext: dll
 
     runs-on: ${{ matrix.runner }}
     env:
@@ -71,11 +67,6 @@ jobs:
       - name: Install build tooling (macOS)
         if: runner.os == 'macOS'
         run: brew install ninja cmake
-
-      - name: Install build tooling (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: choco install ninja -y
 
       - name: Set up Elixir/OTP
         uses: erlef/setup-beam@v1
@@ -116,28 +107,16 @@ jobs:
         shell: bash
         run: |
           flags="-G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_C_BINDINGS=ON -DBUILD_PYTHON_BINDINGS=OFF -DBUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
-          case "$RUNNER_OS" in
-            Linux|macOS)
-              flags="$flags -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
-              if [ "$RUNNER_OS" = "Linux" ] && command -v mold >/dev/null 2>&1; then
-                flags="$flags -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
-              fi
-              ;;
-            Windows)
-              flags="$flags -DCMAKE_C_COMPILER=zig -DCMAKE_C_COMPILER_ARG1=cc -DCMAKE_CXX_COMPILER=zig -DCMAKE_CXX_COMPILER_ARG1=c++"
-              ;;
-          esac
+          flags="$flags -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          if [ "$RUNNER_OS" = "Linux" ] && command -v mold >/dev/null 2>&1; then
+            flags="$flags -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
+          fi
           echo "CMAKE_FLAGS=$flags" >> "$GITHUB_ENV"
 
       - name: Build NIF
         shell: bash
         run: |
           set -euo pipefail
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            export MAKE=make
-            export ZIG_GLOBAL_CACHE_DIR="${RUNNER_TEMP}/zig-cache"
-            mkdir -p "$ZIG_GLOBAL_CACHE_DIR"
-          fi
           mix local.hex --force
           mix local.rebar --force
           mix deps.get
@@ -148,7 +127,7 @@ jobs:
         shell: bash
         run: |
           echo "=== priv contents ==="
-          find _build -type f \( -name '*.so' -o -name '*.dll' -o -name '*.dylib' -o -name '*.h' \) 2>/dev/null || true
+          find _build -type f \( -name '*.so' -o -name '*.dylib' -o -name '*.h' \) 2>/dev/null || true
           echo "=== zigler build dirs ==="
           find _build -type d -name '*zigler*' 2>/dev/null || true
           find deps/zigler -maxdepth 2 -type d 2>/dev/null || true
