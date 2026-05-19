@@ -79,6 +79,27 @@ jobs:
         with:
           version: "0.15.2"
 
+      - name: Force baseline CPU for Zig build (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          real_zig=$(command -v zig)
+          wrapper_dir="$RUNNER_TEMP/zig-wrapper"
+          mkdir -p "$wrapper_dir"
+          cat > "$wrapper_dir/zig" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+          if [ "\${1:-}" = "build" ]; then
+            shift
+            exec "$real_zig" build -Dcpu=baseline "\$@"
+          else
+            exec "$real_zig" "\$@"
+          fi
+          EOF
+          chmod +x "$wrapper_dir/zig"
+          echo "ZIG_EXECUTABLE_PATH=$wrapper_dir/zig" >> "$GITHUB_ENV"
+
       - name: Setup ccache
         uses: hendrikmuhs/ccache-action@v1.2
         with:
