@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.8](https://github.com/edlontech/zvex/compare/zvex-v0.4.7...zvex-v0.4.8) (2026-05-19)
+
+
+### Bug Fixes
+
+* Fixed linux compilation, we need to use baseline arch or the nif can bonk in some linux versions ([b85d0bd](https://github.com/edlontech/zvex/commit/b85d0bd0717f638abb7592f3b34b7007de334682))
+
 ## [0.4.7](https://github.com/edlontech/zvex/compare/zvex-v0.4.6...zvex-v0.4.7) (2026-05-19)
 
 
