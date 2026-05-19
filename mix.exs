@@ -4,7 +4,7 @@ defmodule Zvex.MixProject do
   # x-release-please-version
   @zvec_version "0.4.0"
 
-  @supported_targets ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none)
+  @supported_targets ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none x86_64-windows-gnu)
 
   # When invoked via `mix zigler_precompiled.download`, the project compile
   # that Mix runs to load the task should emit NIF stubs only — no download,

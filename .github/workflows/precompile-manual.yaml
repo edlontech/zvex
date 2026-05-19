@@ -1,0 +1,41 @@
+name: Manual Precompile
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to rebuild precompiled artifacts for (e.g. zvex-v0.4.5)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  derive:
+    name: Derive version from tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - id: parse
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          version="${TAG#zvex-v}"
+          if [ "$version" = "$TAG" ]; then
+            echo "tag '$TAG' does not match expected 'zvex-v<version>' format" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  precompile:
+    needs: [derive]
+    uses: ./.github/workflows/_precompile.yaml
+    with:
+      ref: ${{ inputs.tag }}
+      tag: ${{ inputs.tag }}
+      version: ${{ needs.derive.outputs.version }}
+    secrets: inherit

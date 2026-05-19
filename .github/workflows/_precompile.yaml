@@ -1,0 +1,193 @@
+name: Precompile Native Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref (tag, branch, or SHA) to checkout for the precompile build"
+        required: true
+        type: string
+      tag:
+        description: "GitHub Release tag to upload artifacts to"
+        required: true
+        type: string
+      version:
+        description: "Package version baked into artifact filenames"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  precompile:
+    name: Precompile ${{ matrix.target }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-linux-gnu
+            runner: ubuntu-24.04
+            shared_lib: libzvec_c_api.so
+            nif_ext: so
+          - target: aarch64-linux-gnu
+            runner: ubuntu-22.04-arm
+            shared_lib: libzvec_c_api.so
+            nif_ext: so
+          - target: aarch64-macos-none
+            runner: macos-14
+            shared_lib: libzvec_c_api.dylib
+            nif_ext: so
+          - target: x86_64-windows-gnu
+            runner: windows-2022
+            shared_lib: zvec_c_api.dll
+            nif_ext: dll
+
+    runs-on: ${{ matrix.runner }}
+    env:
+      MIX_ENV: prod
+      ZVEX_BUILD: "true"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          submodules: recursive
+
+      - name: Resolve zvec submodule SHA
+        id: submodule
+        shell: bash
+        run: echo "sha=$(git -C c_src/zvec rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install build tooling (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build patchelf
+          sudo apt-get install -y mold || echo "mold not available; falling back to default linker"
+
+      - name: Install build tooling (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja cmake
+
+      - name: Install build tooling (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: choco install ninja -y
+
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up Elixir/OTP
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.4"
+          otp-version: "28.3"
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.15.2"
+
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: precompile-${{ matrix.target }}
+          max-size: 5G
+
+      - name: Cache CMake build
+        uses: actions/cache@v4
+        with:
+          path: _build/zvec
+          key: cmake-precompile-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
+          restore-keys: |
+            cmake-precompile-${{ matrix.target }}-${{ steps.submodule.outputs.sha }}-
+            cmake-precompile-${{ matrix.target }}-
+
+      - name: Cache mix deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build/prod
+          key: mix-precompile-${{ matrix.target }}-${{ hashFiles('**/mix.lock') }}
+          restore-keys: mix-precompile-${{ matrix.target }}-
+
+      - name: Compute CMAKE_FLAGS
+        shell: bash
+        run: |
+          flags="-G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DBUILD_C_BINDINGS=ON -DBUILD_PYTHON_BINDINGS=OFF -DBUILD_TOOLS=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+          if [ "$RUNNER_OS" = "Linux" ] && command -v mold >/dev/null 2>&1; then
+            flags="$flags -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=mold"
+          fi
+          echo "CMAKE_FLAGS=$flags" >> "$GITHUB_ENV"
+
+      - name: Build NIF
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            export MAKE=make
+          fi
+          mix local.hex --force
+          mix local.rebar --force
+          mix deps.get
+          mix compile
+
+      - name: Set portable RPATH (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          NIF="_build/${MIX_ENV}/lib/zvex/priv/lib/Elixir.Zvex.Native.so"
+          patchelf --set-rpath '$ORIGIN' "$NIF"
+          readelf -d "$NIF" | grep -E 'RUNPATH|RPATH' || true
+
+      - name: Set portable RPATH (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          PRIV="_build/${MIX_ENV}/lib/zvex/priv/lib"
+          NIF="$PRIV/Elixir.Zvex.Native.so"
+
+          while otool -l "$NIF" | awk '/cmd LC_RPATH/{found=1} found && /path /{print $2; exit}' \
+                | grep -q '^/'; do
+            abs=$(otool -l "$NIF" | awk '/cmd LC_RPATH/{found=1} found && /path /{print $2; exit}')
+            install_name_tool -delete_rpath "$abs" "$NIF"
+          done
+
+          install_name_tool -add_rpath @loader_path "$NIF" || true
+          install_name_tool -id @rpath/Elixir.Zvex.Native.so "$NIF"
+          install_name_tool -id @rpath/libzvec_c_api.dylib "$PRIV/libzvec_c_api.dylib"
+
+      - name: Package and upload artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ inputs.version }}
+          NIF_EXT: ${{ matrix.nif_ext }}
+        run: |
+          set -euo pipefail
+          name="Elixir.Zvex.Native-v${VERSION}-${{ matrix.target }}"
+          PRIV="_build/${MIX_ENV}/lib/zvex/priv/lib"
+
+          staging=$(mktemp -d)
+          cp -a "$PRIV/Elixir.Zvex.Native.${NIF_EXT}" "$staging/"
+          cp -a "$PRIV/${{ matrix.shared_lib }}" "$staging/"
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            for f in "$PRIV"/libElixir.Zvex.Native*; do
+              cp -a "$f" "$staging/"
+            done
+          fi
+
+          tarball="${name}.${NIF_EXT}.tar.gz"
+          tar -C "$staging" -czf "$tarball" .
+          gh release upload "$TAG" "$tarball" --clobber
