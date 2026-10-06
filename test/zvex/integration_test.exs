@@ -25,6 +25,11 @@ defmodule Zvex.IntegrationTest do
       assert version.patch >= 0
       assert byte_size(version.raw) > 0
     end
+
+    test "matches the pinned zvec version" do
+      %{major: major, minor: minor, patch: patch} = Zvex.version()
+      assert "#{major}.#{minor}.#{patch}" == Mix.Project.config()[:zvec_version]
+    end
   end
 
   describe "initialize/shutdown lifecycle" do

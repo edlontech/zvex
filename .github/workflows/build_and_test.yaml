@@ -10,7 +10,7 @@ permissions:
 jobs:
   build:
     name: Build and test
-    runs-on: ubuntu-22.04-arm
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     strategy:
       matrix:
@@ -60,24 +60,18 @@ jobs:
           key: build-and-test-${{ runner.os }}-${{ runner.arch }}
           max-size: 1G
 
-      - name: Restore deps and _build cache
+      - name: Cache dependencies
         id: mix-deps
         uses: actions/cache@v4
         with:
-          path: |
-            deps
-            _build
-          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-${{ hashFiles('**/mix.lock') }}
-          restore-keys: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-mix-
+          path: deps
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.otp }}-${{ matrix.elixir }}-deps-${{ hashFiles('mix.lock') }}
 
-      - name: Cache CMake build directory
+      - name: Cache CMake build
         uses: actions/cache@v4
         with:
           path: _build/zvec
-          key: cmake-build-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
-          restore-keys: |
-            cmake-build-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-
-            cmake-build-test-${{ runner.os }}-${{ runner.arch }}-
+          key: cmake-build-test-${{ runner.os }}-${{ runner.arch }}-${{ steps.submodule.outputs.sha }}-${{ hashFiles('Makefile', 'c_src/zvec/CMakeLists.txt', 'c_src/zvec/cmake/**') }}
 
       - name: Fetch and Compile Dependencies
         if: steps.mix-deps.outputs.cache-hit != 'true'

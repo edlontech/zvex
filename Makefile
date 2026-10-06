@@ -42,7 +42,7 @@ $(ZVEC_SRC)/CMakeLists.txt:
 	git clone --depth 1 --branch $(ZVEC_TAG) --recurse-submodules $(ZVEC_REPO) $(ZVEC_SRC)
 
 build: $(ZVEC_SRC)/CMakeLists.txt
-	cmake -S $(ZVEC_SRC) -B $(ZVEC_BUILD) $(CMAKE_FLAGS)
+	cmake -S $(ZVEC_SRC) -B $(ZVEC_BUILD) $(CMAKE_FLAGS) -DOVERRIDE_GIT_DESCRIBE=v$(ZVEX_VERSION)
 	cmake --build $(ZVEC_BUILD) --config Release --target zvec_c_api -j $(NPROC)
 	@mkdir -p $(PRIV_DIR)/lib $(PRIV_DIR)/include/zvec
 	cp $(ZVEC_BUILD)/$(BUILD_LIB_DIR)/$(SHARED_LIB) $(PRIV_DIR)/lib/
