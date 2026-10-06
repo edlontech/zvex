@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.9](https://github.com/edlontech/zvex/compare/zvex-v0.4.8...zvex-v0.4.9) (2026-10-06)
+
+
+### Features
+
+* **native:** pin zvec 0.7 and adapt fetch ([2b6981c](https://github.com/edlontech/zvex/commit/2b6981cd77b21d20c792557697033437bdc06c17))
+
+
+### Bug Fixes
+
+* **check:** remove stale locks and serialize native checks ([f301ab1](https://github.com/edlontech/zvex/commit/f301ab1457ab14bf8aeae259360912f53ec121f8))
+
 ## [0.4.8](https://github.com/edlontech/zvex/compare/zvex-v0.4.7...zvex-v0.4.8) (2026-05-19)
 
 
