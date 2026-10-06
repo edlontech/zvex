@@ -431,7 +431,7 @@ defmodule Zvex.Vector do
   defp unpack_sparse(<<nnz::unsigned-little-64, rest::binary>>, :sparse_vector_fp32) do
     indices_size = nnz * 4
     values_size = nnz * 4
-    <<indices_bin::binary-size(indices_size), values_bin::binary-size(values_size)>> = rest
+    <<indices_bin::binary-size(^indices_size), values_bin::binary-size(^values_size)>> = rest
     indices = for <<i::unsigned-little-32 <- indices_bin>>, do: i
     values = for <<v::little-float-32 <- values_bin>>, do: v
     {indices, values}
@@ -440,7 +440,7 @@ defmodule Zvex.Vector do
   defp unpack_sparse(<<nnz::unsigned-little-64, rest::binary>>, :sparse_vector_fp16) do
     indices_size = nnz * 4
     values_size = nnz * 2
-    <<indices_bin::binary-size(indices_size), values_bin::binary-size(values_size)>> = rest
+    <<indices_bin::binary-size(^indices_size), values_bin::binary-size(^values_size)>> = rest
     indices = for <<i::unsigned-little-32 <- indices_bin>>, do: i
     values = for <<bytes::binary-size(2) <- values_bin>>, do: decode_fp16(bytes)
     {indices, values}
