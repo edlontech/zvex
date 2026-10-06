@@ -660,7 +660,7 @@ pub fn collection_fetch(resource_term: beam.term, pks_list: beam.term) beam.term
     zvec.zvec_clear_error();
     var result_docs: [*c]?*zvec.zvec_doc_t = undefined;
     var found_count: usize = 0;
-    const rc = zvec.zvec_collection_fetch(ptr, @ptrCast(pks.ptrs), pks.count, @ptrCast(&result_docs), &found_count);
+    const rc = zvec.zvec_collection_fetch(ptr, @ptrCast(pks.ptrs), pks.count, null, 0, true, @ptrCast(&result_docs), &found_count);
 
     if (rc != zvec.ZVEC_OK) {
         return common.make_error_result(rc);

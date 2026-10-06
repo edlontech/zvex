@@ -2,7 +2,7 @@ defmodule Zvex.MixProject do
   use Mix.Project
 
   # x-release-please-version
-  @zvec_version "0.4.0"
+  @zvec_version "0.7.0"
 
   @supported_targets ~w(x86_64-linux-gnu aarch64-linux-gnu aarch64-macos-none)
 

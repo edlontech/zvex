@@ -15,7 +15,7 @@ else
 	BUILD_LIB_DIR = lib
 endif
 
-CMAKE_GENERATOR_FLAG := $(if $(shell command -v ninja 2>/dev/null),-G Ninja,)
+CMAKE_GENERATOR_FLAG := $(if $(wildcard $(ZVEC_BUILD)/CMakeCache.txt),,$(if $(shell command -v ninja 2>/dev/null),-G Ninja,))
 
 CMAKE_FLAGS ?= $(CMAKE_GENERATOR_FLAG) \
 	-DCMAKE_BUILD_TYPE=Release \
@@ -26,43 +26,29 @@ CMAKE_FLAGS ?= $(CMAKE_GENERATOR_FLAG) \
 
 NPROC := $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
 
-.PHONY: all build clean force
+.PHONY: all build clean
 
-all:
-	@if [ -f "$(PRIV_DIR)/lib/$(SHARED_LIB)" ] && [ -f "$(PRIV_DIR)/include/zvec/c_api.h" ]; then \
-	  echo "[zvex] using existing $(SHARED_LIB) in $(PRIV_DIR)/lib (run 'mix clean' to force rebuild)"; \
-	else \
-	  $(MAKE) build; \
-	fi
-
-build: $(PRIV_DIR)/lib/$(SHARED_LIB) $(PRIV_DIR)/include/zvec/c_api.h
+all: build
 
 $(ZVEC_SRC)/CMakeLists.txt:
-	@if [ ! -f "$@" ]; then \
-	  if ! command -v git >/dev/null 2>&1; then \
-	    echo "[zvex] git is required to fetch zvec sources but was not found in PATH" >&2; \
-	    exit 1; \
-	  fi; \
-	  echo "[zvex] fetching zvec $(ZVEC_TAG) from $(ZVEC_REPO)"; \
-	  rm -rf $(ZVEC_SRC); \
-	  git clone --depth 1 --branch $(ZVEC_TAG) --recurse-submodules $(ZVEC_REPO) $(ZVEC_SRC); \
+	@if [ -e "$(ZVEC_SRC)" ]; then \
+	  echo "[zvex] existing $(ZVEC_SRC) has no CMakeLists.txt; refusing to replace it" >&2; \
+	  exit 1; \
 	fi
+	@if ! command -v git >/dev/null 2>&1; then \
+	  echo "[zvex] git is required to fetch zvec sources but was not found in PATH" >&2; \
+	  exit 1; \
+	fi
+	git clone --depth 1 --branch $(ZVEC_TAG) --recurse-submodules $(ZVEC_REPO) $(ZVEC_SRC)
 
-$(ZVEC_BUILD)/CMakeCache.txt: $(ZVEC_SRC)/CMakeLists.txt
+build: $(ZVEC_SRC)/CMakeLists.txt
 	cmake -S $(ZVEC_SRC) -B $(ZVEC_BUILD) $(CMAKE_FLAGS)
-
-$(ZVEC_BUILD)/$(BUILD_LIB_DIR)/$(SHARED_LIB): $(ZVEC_BUILD)/CMakeCache.txt force
 	cmake --build $(ZVEC_BUILD) --config Release --target zvec_c_api -j $(NPROC)
-
-$(PRIV_DIR)/lib/$(SHARED_LIB): $(ZVEC_BUILD)/$(BUILD_LIB_DIR)/$(SHARED_LIB)
-	@mkdir -p $(PRIV_DIR)/lib
+	@mkdir -p $(PRIV_DIR)/lib $(PRIV_DIR)/include/zvec
 	cp $(ZVEC_BUILD)/$(BUILD_LIB_DIR)/$(SHARED_LIB) $(PRIV_DIR)/lib/
 ifeq ($(UNAME_S),Darwin)
 	install_name_tool -id @rpath/$(SHARED_LIB) $(PRIV_DIR)/lib/$(SHARED_LIB)
 endif
-
-$(PRIV_DIR)/include/zvec/c_api.h: $(ZVEC_SRC)/CMakeLists.txt
-	@mkdir -p $(PRIV_DIR)/include/zvec
 	cp $(ZVEC_SRC)/src/include/zvec/c_api.h $(PRIV_DIR)/include/zvec/
 
 clean:
